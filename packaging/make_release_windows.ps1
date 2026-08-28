@@ -9,11 +9,16 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $dir = "dist\CorianoSign"
-if (-not (Test-Path $dir)) { throw "Manca $dir: esegui prima packaging\build_windows.ps1" }
+if (-not (Test-Path $dir)) {
+    throw "Manca ${dir}: esegui prima packaging\build_windows.ps1"
+}
 
-$py = if ($env:PYTHON) { $env:PYTHON } else { "python" }
+# usa l'interprete del venv di build se presente, altrimenti quello di sistema
+$vpy = Join-Path ".venv-build" "Scripts\python.exe"
+if (-not (Test-Path $vpy)) { $vpy = if ($env:PYTHON) { $env:PYTHON } else { "python" } }
+
 if (-not $Version) {
-    $Version = & $py -c "import sys; sys.path.insert(0,'src'); import corianosign; print(corianosign.__version__)"
+    $Version = & $vpy -c "import sys; sys.path.insert(0,'src'); import corianosign; print(corianosign.__version__)"
 }
 
 $out = "dist\CorianoSign-$Version-windows.zip"
@@ -23,9 +28,10 @@ if (Test-Path $out) { Remove-Item $out }
 Compress-Archive -Path $dir -DestinationPath $out
 
 Write-Host "==> Firmo l'archivio (Ed25519)"
-& $py packaging\update_keys.py firma $out
+& $vpy packaging\update_keys.py firma $out
+if ($LASTEXITCODE -ne 0) { throw "Firma non riuscita" }
 
 Write-Host ""
-Write-Host "==> Fatto. Carica su una GitHub Release con tag v$Version:"
+Write-Host "==> Fatto. Carica su una GitHub Release con tag v${Version}:"
 Write-Host "      $out"
-Write-Host "      $out.sig"
+Write-Host "      ${out}.sig"
