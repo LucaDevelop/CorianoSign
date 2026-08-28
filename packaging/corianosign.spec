@@ -31,6 +31,19 @@ _ICON_PNG = os.path.join(_ROOT, "packaging", "icons", "icon_256.png")
 # immagine di firma grafica predefinita (caricata a runtime da assets/)
 _SIGN_PNG = os.path.join(_ROOT, "packaging", "assets", "default_signature.png")
 
+
+def _read_version() -> str:
+    """Legge __version__ da src/corianosign/__init__.py (senza importare il pkg)."""
+    init = os.path.join(_SRC, "corianosign", "__init__.py")
+    with open(init, encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("__version__"):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return "0.0.0"
+
+
+_VERSION = _read_version()
+
 block_cipher = None
 
 hidden = ["corianosign.updater", "corianosign.aruba", "corianosign.pades"]
@@ -114,7 +127,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "CorianoSign",
             "CFBundleDisplayName": "CorianoSign",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": _VERSION,
+            "CFBundleVersion": _VERSION,
             "NSHumanReadableCopyright": "CorianoSign",
             "NSHighResolutionCapable": True,
             # associazione tipo file .p7m
