@@ -1,0 +1,45 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f7fd1"/>
+      <stop offset="1" stop-color="#1f5aa8"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2ec165"/>
+      <stop offset="1" stop-color="#1a9e4b"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#0b234a" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- sfondo arrotondato -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#bg)"/>
+
+  <!-- documento -->
+  <g filter="url(#soft)">
+    <path d="M330 210
+             h270 l150 150 v454
+             a34 34 0 0 1 -34 34
+             H330 a34 34 0 0 1 -34 -34
+             V244 a34 34 0 0 1 34 -34 z"
+          fill="#ffffff"/>
+    <!-- angolo piegato -->
+    <path d="M600 210 v116 a34 34 0 0 0 34 34 h116 z" fill="#d7e3f2"/>
+  </g>
+
+  <!-- righe di testo -->
+  <g fill="#c3d2e6">
+    <rect x="360" y="430" width="304" height="26" rx="13"/>
+    <rect x="360" y="500" width="304" height="26" rx="13"/>
+    <rect x="360" y="570" width="210" height="26" rx="13"/>
+  </g>
+
+  <!-- badge verde con spunta -->
+  <g filter="url(#soft)">
+    <circle cx="670" cy="700" r="150" fill="url(#badge)"/>
+    <path d="M598 702 l52 52 l104 -118"
+          fill="none" stroke="#ffffff" stroke-width="42"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+[tsa]
+default_tsa = tsa_config1
+[tsa_config1]
+serial = tsaserial.txt
+crypto_device = builtin
+signer_digest = sha256
+default_policy = 1.2.3.4.1
+digests = sha256, sha512
+accuracy = secs:1
+ordering = yes
+tsa_name = yes
+ess_cert_id_alg = sha256

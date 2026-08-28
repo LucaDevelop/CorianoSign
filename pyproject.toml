@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "corianosign"
+version = "0.1.0"
+description = "App cross-platform per verificare firme digitali (.p7m / CAdES) ed estrarne il contenuto"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "CorianoSign" }]
+dependencies = [
+    "PySide6>=6.6",
+    "asn1crypto>=1.5",
+    "cryptography>=42",
+    "pyhanko-certvalidator>=0.26",
+    "signxml>=4.0",
+    "zeep>=4.2",
+    "tzdata>=2024.1",
+    "requests>=2.31",
+    "lxml>=5.0",
+]
+
+[project.scripts]
+corianosign-cli = "corianosign.cli:main"
+
+[project.gui-scripts]
+corianosign = "corianosign.gui:run"
+
+[tool.pytest.ini_options]
+markers = [
+    "network: test che richiedono connessione (scaricano LOTL/TSL)",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

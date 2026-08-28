@@ -1,0 +1,34 @@
+# chiave privata di firma degli aggiornamenti: NON committare mai
+packaging/update_private_key.pem
+
+# ambienti e build
+.venv/
+.venv-build/
+build/
+dist/
+
+# cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# documenti firmati reali usati solo per prove locali (dati personali/ufficiali)
+prova.pdf
+prova-firmato.pdf
+tests/fixtures/pades_firmato.pdf
+tests/fixtures/documento.pdf.p7m
+
+# metadati editable install
+*.egg-info/
+
+# screenshot dell'app in docs/ (possono mostrare dati reali) — tengo solo icon.png
+docs/screenshot.png
+docs/settings.png
+docs/settings_general.png
+docs/settings_sign.png
+docs/sign_tab.png
+docs/cades_t.png
+docs/cades_lta.png
