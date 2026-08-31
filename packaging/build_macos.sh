@@ -7,7 +7,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PY="${PYTHON:-python3}"
+# scegli un Python 3.10+ (PySide6 6.11 non supporta la 3.9 di sistema)
+if [ -n "${PYTHON:-}" ]; then
+    PY="$PYTHON"
+else
+    PY=""
+    for c in python3.13 python3.12 python3.11 python3.10; do
+        command -v "$c" >/dev/null 2>&1 && { PY="$c"; break; }
+    done
+    [ -n "$PY" ] || PY="python3"
+fi
+if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 10) else 1)'; then
+    echo "ERRORE: serve Python 3.10+ (PySide6 6.11 non supporta $("$PY" --version 2>&1))."
+    echo "        Installa python@3.12 con Homebrew, oppure indicane uno:"
+    echo "        PYTHON=/opt/homebrew/bin/python3.12 $0"
+    exit 1
+fi
 
 echo "==> Creazione virtualenv di build (.venv-build)"
 "$PY" -m venv .venv-build
