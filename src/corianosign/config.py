@@ -56,7 +56,7 @@ class AppConfig:
     # il testo della firma grafica è sempre il Nome Cognome dal certificato.
     sign_ask_reason: bool = False       # chiede la motivazione al momento della firma
     sign_ask_location: bool = False     # chiede il luogo al momento della firma
-    sign_show_datetime: bool = False    # data/ora nel riquadro (Aruba la etichetta UTC)
+    sign_show_datetime: bool = True     # data/ora nel riquadro (default attivo)
     sign_image_mode: str = "default"    # "default" | "none" | "custom"
     sign_logo_path: str = ""            # usato solo con sign_image_mode == "custom"
     sign_image_only: bool = False
@@ -113,7 +113,7 @@ def load_config() -> AppConfig:
         revocation_online=bool(data.get("revocation_online", True)),
         sign_ask_reason=bool(data.get("sign_ask_reason", False)),
         sign_ask_location=bool(data.get("sign_ask_location", False)),
-        sign_show_datetime=bool(data.get("sign_show_datetime", False)),
+        sign_show_datetime=bool(data.get("sign_show_datetime", True)),
         sign_image_mode=str(data.get("sign_image_mode", "")),
         sign_logo_path=str(data.get("sign_logo_path", "")),
         sign_image_only=bool(data.get("sign_image_only", False)),
