@@ -14,18 +14,49 @@ if (-not (Test-Path "dist\CorianoSign\CorianoSign.exe")) {
 }
 
 # trova ISCC.exe (compilatore Inno Setup)
-$iscc = $null
-foreach ($p in @(
-    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-    "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-)) { if (Test-Path $p) { $iscc = $p; break } }
-if (-not $iscc) {
+function Find-Iscc {
+    # 1) override esplicito
+    if ($env:ISCC -and (Test-Path $env:ISCC)) { return $env:ISCC }
+    # 2) percorsi standard (Inno Setup 6 e 5)
+    foreach ($p in @(
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 5\ISCC.exe",
+        "${env:ProgramFiles}\Inno Setup 5\ISCC.exe"
+    )) { if ($p -and (Test-Path $p)) { return $p } }
+    # 3) sul PATH
     $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    if ($cmd) { $iscc = $cmd.Source }
+    if ($cmd) { return $cmd.Source }
+    # 4) dalla chiave di disinstallazione nel registro
+    foreach ($k in @(
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1",
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1"
+    )) {
+        try {
+            $loc = (Get-ItemProperty -Path $k -ErrorAction Stop).InstallLocation
+            if ($loc) {
+                $p = Join-Path $loc "ISCC.exe"
+                if (Test-Path $p) { return $p }
+            }
+        } catch { }
+    }
+    # 5) ricerca ricorsiva (ultima risorsa, più lenta)
+    foreach ($base in @("${env:ProgramFiles(x86)}", "${env:ProgramFiles}", "$env:LOCALAPPDATA")) {
+        if ($base -and (Test-Path $base)) {
+            $found = Get-ChildItem -Path $base -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+            if ($found) { return $found.FullName }
+        }
+    }
+    return $null
 }
+
+$iscc = Find-Iscc
 if (-not $iscc) {
-    throw "Inno Setup non trovato. Installalo da https://jrsoftware.org/isdl.php"
+    throw "ISCC.exe (Inno Setup) non trovato. Installa Inno Setup da https://jrsoftware.org/isdl.php, oppure imposta `$env:ISCC al percorso completo di ISCC.exe."
 }
+Write-Host "==> Inno Setup: $iscc"
 
 # versione dal package se non passata
 $vpy = Join-Path ".venv-build" "Scripts\python.exe"
