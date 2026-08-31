@@ -233,7 +233,12 @@ def _extract(archive: Path) -> Path:
     """Estrae l'archivio in una cartella temporanea e ritorna quella cartella."""
     out = archive.parent / "extracted"
     out.mkdir(exist_ok=True)
-    if archive.suffix.lower() == ".zip":
+    if sys.platform == "darwin":
+        # ditto preserva symlink, bit di esecuzione e firma del bundle .app:
+        # zipfile di Python li perde e rende l'app non avviabile.
+        subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(out)],
+                       check=True)
+    elif archive.suffix.lower() == ".zip":
         with zipfile.ZipFile(archive) as z:
             z.extractall(out)
     else:  # tar.gz / tgz
@@ -319,21 +324,31 @@ def _apply_windows(extracted: Path, pid: int) -> None:
         raise UpdateError(f"Archivio Windows privo di {__app_name__}.exe.")
     old_dir = _current_windows_dir()
     exe = f"{__app_name__}.exe"
+    log = extracted.parent / "update.log"
     bat = extracted.parent / "apply_update.bat"
+    # NB: 'set "VAR=valore"' NON include le virgolette nel valore; si quota all'uso
+    # ("%VAR%"), altrimenti i percorsi con spazi si rompono.
     bat.write_text(
         "@echo off\r\n"
         "setlocal\r\n"
-        f'set PID={pid}\r\n'
-        f'set OLD="{old_dir}"\r\n'
-        f'set NEW="{new_dir}"\r\n'
+        f'set "PID={pid}"\r\n'
+        f'set "OLD={old_dir}"\r\n'
+        f'set "NEW={new_dir}"\r\n'
+        f'set "LOG={log}"\r\n'
+        'cd /d "%TEMP%"\r\n'
+        'echo [%DATE% %TIME%] avvio aggiornamento > "%LOG%"\r\n'
         ":waitloop\r\n"
         'tasklist /FI "PID eq %PID%" 2>nul | find "%PID%" >nul\r\n'
         "if not errorlevel 1 (\r\n"
         "  timeout /t 1 /nobreak >nul\r\n"
         "  goto waitloop\r\n"
         ")\r\n"
-        "robocopy %NEW% %OLD% /MIR /NFL /NDL /NJH /NJS /NC /NS >nul\r\n"
-        f'start "" %OLD%\\{exe}\r\n',
+        "timeout /t 1 /nobreak >nul\r\n"
+        'robocopy "%NEW%" "%OLD%" /MIR /NFL /NDL /NJH /NJS /NC /NS >> "%LOG%" 2>&1\r\n'
+        'set "RC=%ERRORLEVEL%"\r\n'
+        'echo robocopy exit=%RC% >> "%LOG%"\r\n'
+        'if %RC% GEQ 8 echo COPIA FALLITA (permessi? prova a reinstallare) >> "%LOG%"\r\n'
+        f'start "" "%OLD%\\{exe}"\r\n',
         encoding="utf-8",
     )
     DETACHED = 0x00000008  # DETACHED_PROCESS
