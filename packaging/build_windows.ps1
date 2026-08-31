@@ -13,9 +13,40 @@ function Assert-Ok([string]$What) {
     if ($LASTEXITCODE -ne 0) { throw "Comando fallito ($LASTEXITCODE): $What" }
 }
 
-$py = if ($env:PYTHON) { $env:PYTHON } else { "python" }
+# Vero se l'interprete indicato è una versione supportata (3.10-3.13).
+# PySide6 6.11 non ha wheel per 3.9 né (ancora) per 3.14.
+function Test-PySupported([string]$Exe) {
+    if (-not $Exe) { return $false }
+    try {
+        & $Exe -c "import sys; raise SystemExit(0 if (3,10) <= sys.version_info[:2] <= (3,13) else 1)" 2>$null
+    } catch { return $false }
+    return ($LASTEXITCODE -eq 0)
+}
 
-Write-Host "==> Python di partenza:"
+# Sceglie un Python 3.10-3.13: $env:PYTHON se impostato, altrimenti prova il
+# launcher 'py' per le versioni supportate (così evita il 3.14 predefinito),
+# poi 'python' come ultima risorsa.
+if ($env:PYTHON) {
+    $py = $env:PYTHON
+    if (-not (Test-PySupported $py)) {
+        throw "PYTHON=$py non è una versione 3.10-3.13 supportata."
+    }
+} else {
+    $py = $null
+    # usa il launcher 'py' solo se presente (altrimenti & py ... interromperebbe)
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        foreach ($v in @("3.13", "3.12", "3.11", "3.10")) {
+            $exe = & py "-$v" -c "import sys; print(sys.executable)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $exe) { $py = $exe.Trim(); break }
+        }
+    }
+    if (-not $py -and (Test-PySupported "python")) { $py = "python" }
+    if (-not $py) {
+        throw "Nessun Python 3.10-3.13 trovato (hai forse solo la 3.14). Installa Python 3.13 o 3.12 a 64 bit, oppure imposta `$env:PYTHON al suo percorso."
+    }
+}
+
+Write-Host "==> Python scelto:"
 & $py --version; Assert-Ok "python --version"
 
 Write-Host "==> Creazione virtualenv di build (.venv-build)"
