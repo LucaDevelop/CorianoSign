@@ -338,12 +338,14 @@ def _apply_windows(extracted: Path, pid: int) -> None:
         'cd /d "%TEMP%"\r\n'
         'echo [%DATE% %TIME%] avvio aggiornamento > "%LOG%"\r\n'
         ":waitloop\r\n"
-        'tasklist /FI "PID eq %PID%" 2>nul | find "%PID%" >nul\r\n'
+        # attende la chiusura del processo; 'ping' come sleep (non serve stdin,
+        # a differenza di 'timeout' che senza console fallisce).
+        'tasklist /FI "PID eq %PID%" /NH 2>nul | findstr /C:"%PID%" >nul\r\n'
         "if not errorlevel 1 (\r\n"
-        "  timeout /t 1 /nobreak >nul\r\n"
+        "  ping -n 2 127.0.0.1 >nul\r\n"
         "  goto waitloop\r\n"
         ")\r\n"
-        "timeout /t 1 /nobreak >nul\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
         'robocopy "%NEW%" "%OLD%" /MIR /NFL /NDL /NJH /NJS /NC /NS >> "%LOG%" 2>&1\r\n'
         'set "RC=%ERRORLEVEL%"\r\n'
         'echo robocopy exit=%RC% >> "%LOG%"\r\n'
@@ -351,10 +353,13 @@ def _apply_windows(extracted: Path, pid: int) -> None:
         f'start "" "%OLD%\\{exe}"\r\n',
         encoding="utf-8",
     )
-    DETACHED = 0x00000008  # DETACHED_PROCESS
+    # CREATE_NO_WINDOW: il processo ha una console (nascosta), così i comandi
+    # batch funzionano, senza mostrare finestre. DETACHED_PROCESS invece lasciava
+    # lo script senza console e rompeva find/timeout.
+    CREATE_NO_WINDOW = 0x08000000
     subprocess.Popen(
         ["cmd", "/c", str(bat)],
-        creationflags=DETACHED,
+        creationflags=CREATE_NO_WINDOW,
         close_fds=True,
     )
     os._exit(0)
