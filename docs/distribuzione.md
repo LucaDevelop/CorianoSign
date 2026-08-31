@@ -9,10 +9,12 @@ apertura il sistema mostra un avviso. In fondo trovi come superarlo.
 ## macOS — DMG (trascina in Applicazioni)
 
 ```bash
-brew install create-dmg            # una tantum
-./packaging/build_macos.sh         # compila dist/CorianoSign.app
-./packaging/make_dmg_macos.sh      # crea dist/CorianoSign-<ver>.dmg
+brew install create-dmg            # una tantum (opzionale: senza, usa hdiutil)
+./packaging/build_macos.sh         # compila l'app E crea già il DMG in dist/
 ```
+
+`build_macos.sh` genera **sempre** anche l'installer `dist/CorianoSign-<ver>.dmg`.
+Per rigenerare solo il DMG (app già compilata): `./packaging/make_dmg_macos.sh`.
 
 L'utente apre il `.dmg` e trascina **CorianoSign** nella cartella **Applicazioni**.
 
@@ -31,8 +33,11 @@ Sul PC Windows, una tantum, installa **Inno Setup 6**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
-powershell -ExecutionPolicy Bypass -File packaging\make_installer_windows.ps1
 ```
+
+`build_windows.ps1` compila l'app e crea **già** l'installer in `dist\` (se Inno
+Setup è installato; altrimenti avvisa e prosegue). Per rigenerare solo
+l'installer: `powershell -ExecutionPolicy Bypass -File packaging\make_installer_windows.ps1`.
 
 Risultato: `dist\CorianoSign-<ver>-setup.exe`, un installer wizard che crea la
 voce nel menu Start, la disinstallazione e (opzionale) l'associazione dei `.p7m`.

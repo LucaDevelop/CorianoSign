@@ -13,13 +13,15 @@ if (-not (Test-Path $dir)) {
     throw "Manca ${dir}: esegui prima packaging\build_windows.ps1"
 }
 
-# usa l'interprete del venv di build se presente, altrimenti quello di sistema
+# l'interprete serve solo per firmare (update_keys.py usa 'cryptography')
 $vpy = Join-Path ".venv-build" "Scripts\python.exe"
 if (-not (Test-Path $vpy)) { $vpy = if ($env:PYTHON) { $env:PYTHON } else { "python" } }
 
+# versione letta direttamente da __init__.py (nessuna dipendenza dal venv)
 if (-not $Version) {
-    $Version = & $vpy -c "import sys; sys.path.insert(0,'src'); import corianosign; print(corianosign.__version__)"
+    $Version = (Select-String -Path "src\corianosign\__init__.py" -Pattern '^__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 }
+if (-not $Version) { throw "Impossibile determinare la versione da __init__.py" }
 
 $out = "dist\CorianoSign-$Version-windows.zip"
 Write-Host "==> Creo $out"

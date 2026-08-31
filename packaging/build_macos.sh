@@ -47,6 +47,11 @@ echo
 echo "==> Fatto: dist/CorianoSign.app"
 echo "    Avvio:   open dist/CorianoSign.app"
 echo
+
+# installer DMG sempre incluso in dist/ (usa create-dmg se c'è, altrimenti hdiutil)
+echo "==> Creo l'installer DMG"
+"$(dirname "$0")/make_dmg_macos.sh" || echo "   (installer DMG non creato: vedi sopra)"
+echo
 echo "NOTA firma/notarizzazione (per distribuzione fuori dal proprio Mac):"
 echo "  codesign --deep --force --options runtime \\"
 echo "    --sign \"Developer ID Application: NOME (TEAMID)\" dist/CorianoSign.app"

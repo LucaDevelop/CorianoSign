@@ -89,6 +89,16 @@ Write-Host "==> PyInstaller"
 Write-Host ""
 Write-Host "==> Fatto: dist\CorianoSign\CorianoSign.exe"
 Write-Host ""
+
+# installer setup.exe sempre incluso in dist/ (best-effort: richiede Inno Setup)
+Write-Host "==> Creo l'installer (setup.exe)"
+try {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\make_installer_windows.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "exit $LASTEXITCODE" }
+} catch {
+    Write-Warning "Installer non creato ($_). Installa Inno Setup e rilancia: powershell -ExecutionPolicy Bypass -File packaging\make_installer_windows.ps1"
+}
+Write-Host ""
 Write-Host "==> Archivio di release firmato (per l'auto-update):"
 Write-Host "    powershell -ExecutionPolicy Bypass -File packaging\make_release_windows.ps1"
 Write-Host ""

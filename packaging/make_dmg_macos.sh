@@ -13,8 +13,9 @@ cd "$(dirname "$0")/.."
 APP="dist/CorianoSign.app"
 [ -d "$APP" ] || { echo "Manca $APP: esegui prima packaging/build_macos.sh"; exit 1; }
 
-PY="${PYTHON:-.venv/bin/python}"
-VER="${1:-$($PY -c 'import sys; sys.path.insert(0,"src"); import corianosign; print(corianosign.__version__)')}"
+# versione letta direttamente da __init__.py (nessuna dipendenza dal venv)
+VER="${1:-$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/corianosign/__init__.py)}"
+[ -n "$VER" ] || { echo "Impossibile determinare la versione"; exit 1; }
 
 OUT="dist/CorianoSign-${VER}.dmg"
 ICON="packaging/CorianoSign.icns"

@@ -58,12 +58,11 @@ if (-not $iscc) {
 }
 Write-Host "==> Inno Setup: $iscc"
 
-# versione dal package se non passata
-$vpy = Join-Path ".venv-build" "Scripts\python.exe"
-if (-not (Test-Path $vpy)) { $vpy = if ($env:PYTHON) { $env:PYTHON } else { "python" } }
+# versione letta direttamente da __init__.py (nessuna dipendenza dal venv)
 if (-not $Version) {
-    $Version = & $vpy -c "import sys; sys.path.insert(0,'src'); import corianosign; print(corianosign.__version__)"
+    $Version = (Select-String -Path "src\corianosign\__init__.py" -Pattern '^__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 }
+if (-not $Version) { throw "Impossibile determinare la versione da __init__.py" }
 
 Write-Host "==> Compilo l'installer per la versione $Version con"
 Write-Host "    $iscc"
