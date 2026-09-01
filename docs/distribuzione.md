@@ -45,8 +45,29 @@ Può essere installato **senza privilegi di amministratore** (installazione per
 l'utente corrente).
 
 ### Prima apertura (eseguibile non firmato)
-Windows SmartScreen mostra «*Windows ha protetto il PC*». Una volta sola:
-- clicca **Ulteriori informazioni** ▸ **Esegui comunque**.
+L'installer **non è firmato** (nessun certificato Authenticode). Chi lo **scarica
+da internet** vedrà, una volta sola, l'avviso **SmartScreen**. È normale e non
+indica un problema: l'app non è firmata, non è pericolosa.
+
+Istruzioni da girare ai colleghi (installazione **per l'utente corrente**, quindi
+**senza password di amministratore**):
+
+1. Scarica `CorianoSign-<ver>-setup.exe` dalla pagina delle release.
+2. Doppio clic. Se compare **«Windows ha protetto il PC»**:
+   → clicca **Ulteriori informazioni** → **Esegui comunque**.
+3. Segui la procedura guidata (Avanti → Installa). Non serve l'amministratore.
+
+Se il pulsante «Esegui comunque» non compare, sblocca prima il file: **clic destro
+sul `.exe` → Proprietà → in fondo spunta «Annulla blocco» (Unblock) → OK**, poi
+riapri.
+
+> Nota: gli **aggiornamenti automatici** successivi non mostrano SmartScreen
+> (l'app scarica e applica l'update da sola), quindi l'avviso riguarda solo la
+> **prima** installazione.
+
+Per eliminare del tutto l'avviso servirebbe firmare l'eseguibile e il setup con un
+certificato Authenticode (o Azure Trusted Signing): vedi la sezione «Windows
+silenzioso» più sotto.
 
 ## macOS senza avvisi: firma Developer ID + notarizzazione
 
@@ -88,9 +109,22 @@ Variabili opzionali: `CODESIGN_IDENTITY` (identità specifica), `NOTARY_PROFILE`
 
 ## Windows «silenzioso» (senza SmartScreen)
 
-Per togliere l'avviso SmartScreen serve un certificato **Authenticode** (OV/EV)
-con cui firmare `CorianoSign.exe` e il setup con `signtool`. Si aggiunge come
-passaggio in `build_windows.ps1` quando lo avrai.
+Per togliere l'avviso SmartScreen serve firmare `CorianoSign.exe` **e** il
+`setup.exe` con `signtool` (firma **Authenticode**). Tre strade:
+
+- **Azure Trusted Signing** (~10 $/mese, consigliato per progetti piccoli):
+  servizio Microsoft, reputazione SmartScreen immediata, nessun token hardware;
+  si integra con `signtool` tramite una dlib. Richiede un account Azure e una
+  verifica d'identità.
+- **Certificato OV/EV** da una CA (DigiCert, Sectigo…): ~250–600 $/anno; dal
+  2023 la chiave sta su **token USB** o **HSM cloud**. OV costruisce la
+  reputazione col tempo, EV la ha subito.
+- **Non firmare** (scelta attuale): nessun costo, avviso alla prima apertura —
+  vedi «Prima apertura (eseguibile non firmato)» sopra.
+
+Quando avrai le credenziali, la firma si aggiunge in `make_installer_windows.ps1`
+(firma dell'exe prima di impacchettarlo e del setup dopo), es.:
+`signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a <file>`.
 
 ## Riepilogo file prodotti
 
