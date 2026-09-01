@@ -48,17 +48,49 @@ l'utente corrente).
 Windows SmartScreen mostra «*Windows ha protetto il PC*». Una volta sola:
 - clicca **Ulteriori informazioni** ▸ **Esegui comunque**.
 
-## Rendere gli installer «silenziosi» (senza avvisi)
+## macOS senza avvisi: firma Developer ID + notarizzazione
 
-Per eliminare del tutto gli avvisi servono i certificati di firma (a pagamento):
+Per eliminare del tutto l'avviso di Gatekeeper (app che si apre con un doppio
+clic) serve firmare con un **Developer ID Apple** e **notarizzare**. Tutto il
+processo è automatizzato in `packaging/make_distributable_macos.sh`.
 
-- **macOS**: iscrizione Apple Developer (99 $/anno) → firma *Developer ID* +
-  **notarizzazione** dell'app e del DMG (`codesign` + `xcrun notarytool` +
-  `stapler`).
-- **Windows**: certificato **Authenticode** (OV/EV) → firma di `CorianoSign.exe`
-  e del setup con `signtool`.
+### Setup una tantum
+1. **Account Apple Developer** a pagamento (99 $/anno):
+   <https://developer.apple.com/programs/>.
+2. **Certificato «Developer ID Application»** nel portachiavi. In Xcode ▸
+   *Settings ▸ Accounts* aggiungi l'Apple ID, poi *Manage Certificates ▸ +
+   ▸ Developer ID Application*. Verifica con:
+   ```bash
+   security find-identity -v -p codesigning
+   ```
+3. **Credenziali di notarizzazione** salvate in un profilo del portachiavi (le
+   digiti tu, restano nel portachiavi):
+   ```bash
+   xcrun notarytool store-credentials corianosign-notary \
+     --apple-id TUA_APPLE_ID --team-id TEAMID --password APP_SPECIFIC_PASSWORD
+   ```
+   `APP_SPECIFIC_PASSWORD` è una *password per le app* creata su
+   <https://account.apple.com> ▸ *Sicurezza ▸ Password per le app* (NON è la
+   password dell'Apple ID). Il `TEAMID` è nel tuo account developer.
 
-Quando li avrai, si aggiungono come passaggi negli script di build/packaging.
+### Produrre gli artefatti distribuibili
+Dopo aver compilato l'app (`packaging/build_macos.sh`):
+```bash
+./packaging/make_distributable_macos.sh
+```
+Firma l'app con hardened runtime (`packaging/entitlements_macos.plist`), la
+notarizza e vi applica il *ticket* (staple), poi rigenera **l'archivio Ed25519
+per l'auto-update** e il **DMG**, entrambi con l'app notarizzata dentro. Da lì
+in poi gli aggiornamenti automatici distribuiscono un'app già notarizzata.
+
+Variabili opzionali: `CODESIGN_IDENTITY` (identità specifica), `NOTARY_PROFILE`
+(nome profilo, default `corianosign-notary`), `SKIP_DMG=1` (solo app + zip).
+
+## Windows «silenzioso» (senza SmartScreen)
+
+Per togliere l'avviso SmartScreen serve un certificato **Authenticode** (OV/EV)
+con cui firmare `CorianoSign.exe` e il setup con `signtool`. Si aggiunge come
+passaggio in `build_windows.ps1` quando lo avrai.
 
 ## Riepilogo file prodotti
 

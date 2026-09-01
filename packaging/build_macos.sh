@@ -52,9 +52,7 @@ echo
 echo "==> Creo l'installer DMG"
 "$(dirname "$0")/make_dmg_macos.sh" || echo "   (installer DMG non creato: vedi sopra)"
 echo
-echo "NOTA firma/notarizzazione (per distribuzione fuori dal proprio Mac):"
-echo "  codesign --deep --force --options runtime \\"
-echo "    --sign \"Developer ID Application: NOME (TEAMID)\" dist/CorianoSign.app"
-echo "  ditto -c -k --keepParent dist/CorianoSign.app CorianoSign.zip"
-echo "  xcrun notarytool submit CorianoSign.zip --apple-id ID --team-id TEAMID --wait"
-echo "  xcrun stapler staple dist/CorianoSign.app"
+echo "NOTA firma/notarizzazione (distribuzione senza avvisi Gatekeeper):"
+echo "  ./packaging/make_distributable_macos.sh"
+echo "  (firma Developer ID + notarizzazione + staple + DMG; setup in"
+echo "   docs/distribuzione.md)"

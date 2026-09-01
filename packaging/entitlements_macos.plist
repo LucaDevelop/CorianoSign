@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Entitlements minimi per far girare Python/PyInstaller sotto hardened
+         runtime (richiesto dalla notarizzazione Apple). -->
+
+    <!-- CPython genera/esegue codice in memoria -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- l'app carica le librerie impacchettate da PyInstaller (Qt, ecc.):
+         senza questo la library validation dell'hardened runtime le rifiuta -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
