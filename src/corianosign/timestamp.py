@@ -75,6 +75,7 @@ def _verify_token_core(
     revocation_mode: RevocationMode,
     allow_fetching: bool,
     check_trust: bool,
+    fetchers=None,
 ) -> tuple[TimestampResult, Optional[str], Optional[bytes]]:
     """Verifica firma TSA + trust del token; ritorna (res, hash_algo, imprint).
 
@@ -132,6 +133,7 @@ def _verify_token_core(
             moment=res.gen_time,
             revocation_mode=revocation_mode,
             allow_fetching=allow_fetching,
+            fetchers=fetchers,
         )
         res.trust_status = chain.status
         if chain.trust_anchor_cn:
@@ -148,10 +150,12 @@ def verify_timestamp(
     revocation_mode: RevocationMode = RevocationMode.SOFT_FAIL,
     allow_fetching: bool = True,
     check_trust: bool = True,
+    fetchers=None,
 ) -> TimestampResult:
     """Verifica una singola marca temporale sul ``signed_value`` della firma."""
     res, halgo, imprint = _verify_token_core(
-        token, tsa_trust_roots or [], revocation_mode, allow_fetching, check_trust
+        token, tsa_trust_roots or [], revocation_mode, allow_fetching, check_trust,
+        fetchers=fetchers,
     )
     if halgo is None or imprint is None:
         return res
@@ -180,6 +184,7 @@ def verify_archive_timestamp(
     outer_signed_data=None,
     outer_signer_info=None,
     econtent: Optional[bytes] = None,
+    fetchers=None,
 ) -> TimestampResult:
     """Verifica un archive-timestamp CAdES-LTA.
 
@@ -189,7 +194,8 @@ def verify_archive_timestamp(
     certificati e il materiale di revoca.
     """
     res, _halgo, _imprint = _verify_token_core(
-        token, tsa_trust_roots or [], revocation_mode, allow_fetching, check_trust
+        token, tsa_trust_roots or [], revocation_mode, allow_fetching, check_trust,
+        fetchers=fetchers,
     )
 
     if outer_signed_data is not None and outer_signer_info is not None and econtent is not None:
@@ -218,6 +224,7 @@ def verify_signature_timestamps(
     revocation_mode: RevocationMode = RevocationMode.SOFT_FAIL,
     allow_fetching: bool = True,
     check_trust: bool = True,
+    fetchers=None,
 ) -> Optional[TimestampResult]:
     """Verifica tutte le marche di una firma; ritorna la migliore (o None)."""
     tokens = extract_timestamp_tokens(signer_info)
@@ -232,6 +239,7 @@ def verify_signature_timestamps(
             revocation_mode=revocation_mode,
             allow_fetching=allow_fetching,
             check_trust=check_trust,
+            fetchers=fetchers,
         )
         if r.valid and r.trust_status is TrustStatus.TRUSTED:
             return r  # marca pienamente valida e fidata: la migliore possibile

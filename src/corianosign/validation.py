@@ -63,6 +63,7 @@ def validate_chain(
     allow_fetching: bool = True,
     crls=None,
     ocsps=None,
+    fetchers=None,
 ) -> ChainResult:
     """Valida la catena del ``signer_cert`` verso ``trust_roots``.
 
@@ -70,6 +71,9 @@ def validate_chain(
     ``other_certs`` certificati intermedi (dalla busta o incapsulati LT).
     ``crls``/``ocsps`` materiale di revoca incapsulato (CAdES-LT), usato per la
                     validazione storica senza dover contattare la rete.
+    ``fetchers``    oggetto ``Fetchers`` condiviso (rete): passandone lo stesso a
+                    tutte le catene di una verifica, le CRL/OCSP di una CA vengono
+                    scaricate una volta sola (memoizzazione + cache su disco).
     """
     result = ChainResult()
 
@@ -89,6 +93,8 @@ def validate_chain(
             allow_fetching=allow_fetching,
             crls=crls,
             ocsps=ocsps,
+            # riusa i fetcher condivisi solo se il fetch è abilitato
+            fetchers=fetchers if allow_fetching else None,
             revocation_mode=revocation_mode.value,
             weak_hash_algos={"md5", "md2"},
         )

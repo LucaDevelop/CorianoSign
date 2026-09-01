@@ -11,7 +11,7 @@ from typing import Optional
 
 from asn1crypto import x509
 
-from . import cades_lt, cms, pades, timestamp
+from . import cades_lt, cms, pades, revocation, timestamp
 from .model import P7MResult, SignatureResult, SignerInfo, TrustStatus
 from .validation import RevocationMode, validate_chain
 
@@ -65,13 +65,21 @@ def analyze_bytes(
     tsa_roots = tsa_roots or []
     result = P7MResult()
 
+    # Un solo set di fetcher (rete) per l'intera verifica: le CRL/OCSP di una CA
+    # si scaricano una volta sola, condivise tra firmatario, TSA e archive-ts.
+    fetchers = (
+        revocation.build_shared_fetchers()
+        if options.allow_fetching and options.check_trust
+        else None
+    )
+
     # PDF firmato (PAdES): percorso dedicato
     if pades.is_pdf(data):
-        return _analyze_pdf(data, trust_roots, tsa_roots, options)
+        return _analyze_pdf(data, trust_roots, tsa_roots, options, fetchers)
 
     try:
         signatures, content, levels = _analyze_layer(
-            data, trust_roots, tsa_roots, options, depth=1
+            data, trust_roots, tsa_roots, options, depth=1, fetchers=fetchers
         )
     except cms.CmsError as exc:
         result.parse_errors.append(str(exc))
@@ -88,6 +96,7 @@ def _analyze_pdf(
     trust_roots: list[x509.Certificate],
     tsa_roots: list[x509.Certificate],
     options: VerifyOptions,
+    fetchers=None,
 ) -> P7MResult:
     """Analizza un PDF firmato PAdES riusando la verifica CMS/trust."""
     result = P7MResult()
@@ -107,7 +116,7 @@ def _analyze_pdf(
         is_last = (ps.byte_range[2] + ps.byte_range[3]) == max_end
 
         if ps.is_doc_timestamp:
-            out.append(_verify_doc_timestamp(ps, tsa_roots, options))
+            out.append(_verify_doc_timestamp(ps, tsa_roots, options, fetchers))
             continue
 
         if ps.signed_data is None:
@@ -120,7 +129,7 @@ def _analyze_pdf(
         for si in ps.signed_data["signer_infos"]:
             sr = _verify_one(
                 ps.signed_data, si, ps.signed_bytes, certs,
-                trust_roots, tsa_roots, options,
+                trust_roots, tsa_roots, options, fetchers,
             )
             # rietichetta il livello come PAdES (stesse regole degli attributi CAdES)
             sr.level = sr.level.replace("CAdES", "PAdES")
@@ -149,7 +158,9 @@ def _annotate_coverage(sr: SignatureResult, ps, is_last: bool) -> None:
         )
 
 
-def _verify_doc_timestamp(ps, tsa_roots, options: VerifyOptions) -> SignatureResult:
+def _verify_doc_timestamp(
+    ps, tsa_roots, options: VerifyOptions, fetchers=None
+) -> SignatureResult:
     """Verifica un document-timestamp PAdES (SubFilter ETSI.RFC3161)."""
     si = SignerInfo()
     sr = SignatureResult(signer=si)
@@ -164,6 +175,7 @@ def _verify_doc_timestamp(ps, tsa_roots, options: VerifyOptions) -> SignatureRes
         revocation_mode=options.revocation_mode,
         allow_fetching=options.allow_fetching,
         check_trust=options.check_trust,
+        fetchers=fetchers,
     )
     si.common_name = r.tsa_name or "Marca temporale sul documento"
     si.signing_time = r.gen_time
@@ -186,6 +198,7 @@ def _analyze_layer(
     tsa_roots: list[x509.Certificate],
     options: VerifyOptions,
     depth: int,
+    fetchers=None,
 ) -> tuple[list[SignatureResult], Optional[bytes], int]:
     """Analizza un singolo livello CMS, ricorrendo se il contenuto e' un p7m."""
     ci = cms.load_content_info(data)
@@ -198,14 +211,14 @@ def _analyze_layer(
         layer_sigs.append(
             _verify_one(
                 signed_data, signer_info, econtent, certs, trust_roots,
-                tsa_roots, options,
+                tsa_roots, options, fetchers,
             )
         )
 
     # Contenuto annidato: il documento firmato e' a sua volta una busta p7m
     if econtent and depth < 10 and cms.is_cms(econtent):
         inner_sigs, inner_content, inner_levels = _analyze_layer(
-            econtent, trust_roots, tsa_roots, options, depth + 1
+            econtent, trust_roots, tsa_roots, options, depth + 1, fetchers
         )
         # le firme del livello esterno vengono prima (piu' recenti)
         return layer_sigs + inner_sigs, inner_content, max(depth, inner_levels)
@@ -221,6 +234,7 @@ def _verify_one(
     trust_roots: list[x509.Certificate],
     tsa_roots: list[x509.Certificate],
     options: VerifyOptions,
+    fetchers=None,
 ) -> SignatureResult:
     cert = cms._find_signer_cert(signer_info, certs)
     info = cms.build_signer_info(cert, signer_info)
@@ -250,6 +264,7 @@ def _verify_one(
         revocation_mode=options.revocation_mode,
         allow_fetching=options.allow_fetching,
         check_trust=options.check_trust,
+        fetchers=fetchers,
     )
     if ts is not None:
         res.has_timestamp = True
@@ -281,6 +296,7 @@ def _verify_one(
             outer_signed_data=signed_data,
             outer_signer_info=signer_info,
             econtent=econtent,
+            fetchers=fetchers,
         )
         if ar.signature_valid and (
             ar.trust_status in (TrustStatus.TRUSTED, TrustStatus.NOT_CHECKED)
@@ -319,6 +335,7 @@ def _verify_one(
         allow_fetching=options.allow_fetching,
         crls=crls,
         ocsps=ocsps,
+        fetchers=fetchers,
     )
     res.trust_status = chain.status
     res.trust_anchor_cn = chain.trust_anchor_cn

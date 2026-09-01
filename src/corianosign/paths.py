@@ -33,6 +33,13 @@ def trust_cache_dir() -> Path:
     return d
 
 
+def revocation_cache_dir() -> Path:
+    """Cartella per la cache su disco delle CRL (revoca)."""
+    d = data_dir() / "revocation"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def config_file() -> Path:
     return data_dir() / "config.json"
 
