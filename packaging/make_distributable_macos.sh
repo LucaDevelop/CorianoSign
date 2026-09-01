@@ -109,6 +109,8 @@ if [ "${SKIP_DMG:-0}" != "1" ]; then
     echo "==> Creo il DMG …"
     ./packaging/make_dmg_macos.sh "$VER"
     DMG="dist/CorianoSign-${VER}.dmg"
+    echo "==> Firmo il DMG (Developer ID) …"
+    codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$DMG"
     echo "==> Notarizzo e stapleo il DMG …"
     if xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait; then
         xcrun stapler staple "$DMG"
