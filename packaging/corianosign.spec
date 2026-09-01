@@ -46,7 +46,11 @@ _VERSION = _read_version()
 
 block_cipher = None
 
-hidden = ["corianosign.updater", "corianosign.aruba", "corianosign.pades"]
+hidden = [
+    "corianosign.updater", "corianosign.aruba", "corianosign.pades",
+    # QtNetwork serve al lock a istanza singola (QLocalServer/QLocalSocket)
+    "PySide6.QtNetwork",
+]
 # alcune sottodipendenze sono importate dinamicamente
 for pkg in ("pyhanko_certvalidator", "asn1crypto", "oscrypto", "signxml", "zeep", "tzdata"):
     hidden += collect_submodules(pkg)

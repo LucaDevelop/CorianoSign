@@ -1841,6 +1841,7 @@ class CorianoApp(QApplication):
         super().__init__(argv)
         self._window: MainWindow | None = None
         self._pending: str | None = None
+        self._instance_server = None  # QLocalServer del lock a istanza singola
 
     def event(self, e):  # noqa: N802
         if e.type() == QEvent.FileOpen:
@@ -1856,32 +1857,119 @@ class CorianoApp(QApplication):
             path, self._pending = self._pending, None
             self.open_path(path)
 
+    def activate(self) -> None:
+        """Porta in primo piano la finestra esistente (senza aprire file)."""
+        if self._window is None:
+            return
+        win = self._window
+        if win.isMinimized():
+            win.showNormal()
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
     def open_path(self, path: str) -> None:
         if self._window is None:
             self._pending = path
             return
+        self.activate()
         win = self._window
-        win.raise_()
-        win.activateWindow()
         QTimer.singleShot(0, lambda: win.analyze(path))
 
 
+def _file_from_argv(argv) -> str | None:
+    """Primo argomento che sia un file .p7m/.pdf esistente (Windows/Linux)."""
+    for arg in argv[1:]:
+        if arg.lower().endswith((".p7m", ".pdf")) and os.path.isfile(arg):
+            return arg
+    return None
+
+
+def _instance_key() -> str:
+    """Nome del lock, PER-UTENTE (istanze di utenti diversi non si disturbano)."""
+    import getpass
+    try:
+        user = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        user = "u"
+    return f"CorianoSign-{user}"
+
+
+def _forward_to_running(name: str, payload: str, timeout_ms: int = 400) -> bool:
+    """Se esiste già un'istanza in ascolto, le invia ``payload`` e ritorna True.
+
+    ``payload`` = percorso file da aprire, oppure "" per la sola attivazione.
+    Ritorna False se non c'è alcuna istanza (o QtNetwork non è disponibile).
+    """
+    try:
+        from PySide6.QtNetwork import QLocalSocket
+    except Exception:  # noqa: BLE001
+        return False
+    sock = QLocalSocket()
+    sock.connectToServer(name)
+    if not sock.waitForConnected(timeout_ms):
+        return False
+    sock.write(payload.encode("utf-8"))
+    sock.flush()
+    sock.waitForBytesWritten(timeout_ms)
+    sock.disconnectFromServer()
+    if sock.state() != QLocalSocket.LocalSocketState.UnconnectedState:
+        sock.waitForDisconnected(timeout_ms)
+    return True
+
+
+def _start_instance_server(app: "CorianoApp", name: str) -> None:
+    """Mette in ascolto il server del lock: gestisce le seconde aperture."""
+    try:
+        from PySide6.QtNetwork import QLocalServer
+    except Exception:  # noqa: BLE001
+        return
+    server = QLocalServer()
+    # rimuove un eventuale socket stantio lasciato da un crash precedente
+    QLocalServer.removeServer(name)
+    if not server.listen(name):
+        return  # non bloccante: senza lock l'app funziona comunque
+
+    def _on_connection() -> None:
+        conn = server.nextPendingConnection()
+        if conn is None:
+            return
+        payload = ""
+        if conn.waitForReadyRead(500):
+            payload = bytes(conn.readAll()).decode("utf-8", "ignore").strip()
+        conn.disconnectFromServer()
+        if payload:
+            app.open_path(payload)
+        else:
+            app.activate()
+
+    server.newConnection.connect(_on_connection)
+    app._instance_server = server  # trattieni il riferimento
+
+
 def run() -> int:
+    file_arg = _file_from_argv(sys.argv)
+
     existing = QApplication.instance()
     app = existing or CorianoApp(sys.argv)
     app.setApplicationName(__app_name__)
     app.setApplicationDisplayName(__app_name__)
     app.setWindowIcon(app_icon())
 
+    # Istanza singola: se ce n'è già una attiva, passale il file (o la sola
+    # attivazione) ed esci senza aprire una seconda finestra.
+    lock_name = _instance_key()
+    if isinstance(app, CorianoApp) and _forward_to_running(lock_name, file_arg or ""):
+        return 0
+
     win = MainWindow()
     win.show()
 
     if isinstance(app, CorianoApp):
         app.attach_window(win)
+        _start_instance_server(app, lock_name)
         # file passato come argomento (Windows/Linux o riga di comando)
-        for arg in sys.argv[1:]:
-            if arg.lower().endswith((".p7m", ".pdf")) and os.path.isfile(arg):
-                app.open_path(arg)
-                break
+        if file_arg:
+            app.open_path(file_arg)
 
     return app.exec()

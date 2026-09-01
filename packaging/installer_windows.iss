@@ -21,8 +21,12 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-; installa per l'utente corrente se non si hanno privilegi admin
-PrivilegesRequiredOverridesAllowed=dialog commandline
+; SEMPRE installazione per l'utente corrente: nessun prompt admin, nessuna
+; scelta "tutti gli utenti / solo io". Fondamentale perche' l'auto-update
+; sovrascrive i file dell'app: se fosse installata in Program Files (tutti gli
+; utenti) servirebbero i privilegi admin per aggiornare, che i colleghi non
+; hanno. Con 'lowest' {autopf} diventa {localappdata}\Programs e HKA -> HKCU.
+PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
