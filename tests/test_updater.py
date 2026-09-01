@@ -38,7 +38,9 @@ def test_verifica_firma(monkeypatch):
     sig = priv.sign(data)
     assert updater.verify_signature(data, sig)
     assert not updater.verify_signature(data + b"x", sig)   # dati manomessi
-    assert not updater.verify_signature(data, sig[:-1] + b"\x00")  # firma rotta
+    # ultimo byte SEMPRE diverso dall'originale (XOR), cosi' la firma e'
+    # davvero rotta: usare b"\x00" era flaky (~1/256) se il byte era gia' 0x00
+    assert not updater.verify_signature(data, sig[:-1] + bytes([sig[-1] ^ 0x01]))
 
 
 def test_verifica_firma_senza_chiave(monkeypatch):
