@@ -604,6 +604,12 @@ class SettingsDialog(QDialog):
         self.chk_verify = QCheckBox("Verifica autenticità delle liste (firma XAdES)")
         self.chk_verify.setChecked(cfg.verify_signatures)
         lay.addWidget(self.chk_verify)
+        self.chk_open_doc = QCheckBox(
+            "Apri il documento dopo una verifica valida (solo aprendo un .p7m "
+            "con «Apri con»)"
+        )
+        self.chk_open_doc.setChecked(cfg.open_document_on_verify)
+        lay.addWidget(self.chk_open_doc)
 
         form = QFormLayout()
         self.chk_auto = QCheckBox("all'avvio")
@@ -836,6 +842,7 @@ class SettingsDialog(QDialog):
         c.auto_update_app = self.chk_app_update.isChecked()
         c.check_trust = self.chk_trust.isChecked()
         c.revocation_online = self.chk_revoke.isChecked()
+        c.open_document_on_verify = self.chk_open_doc.isChecked()
         c.verify_signatures = self.chk_verify.isChecked()
         c.auto_update = self.chk_auto.isChecked()
         c.interval_days = self.spin_days.value()
@@ -1086,6 +1093,9 @@ class MainWindow(QMainWindow):
         self._store = trust.load_trust_store()
         self._result: P7MResult | None = None
         self._is_pades_result = False
+        # True solo per un .p7m aperto con "Apri con": a verifica verde apre da
+        # solo il documento incapsulato (vedi analyze/_on_analyzed).
+        self._auto_open_document = False
         self._worker: AnalyzeWorker | None = None
         self._trust_worker: TrustWorker | None = None
         self._trust_silent = False
@@ -1249,9 +1259,12 @@ class MainWindow(QMainWindow):
             self.analyze(path)
 
     # -- analisi ---------------------------------------------------------- #
-    def analyze(self, path: str) -> None:
+    def analyze(self, path: str, auto_open_document: bool = False) -> None:
         if not path or not Path(path).is_file():
             return
+        # se richiesto (solo "Apri con" di un .p7m), a verifica verde apriremo
+        # da soli il documento incapsulato in _on_analyzed
+        self._auto_open_document = auto_open_document
         if self._config.check_trust and len(self._store) == 0:
             QMessageBox.information(
                 self,
@@ -1275,6 +1288,7 @@ class MainWindow(QMainWindow):
         self._worker.start()
 
     def _on_failed(self, msg: str) -> None:
+        self._auto_open_document = False
         self._overlay.hide()
         self._set_busy(False)
         QMessageBox.critical(self, "Errore", msg)
@@ -1283,6 +1297,9 @@ class MainWindow(QMainWindow):
         self._overlay.hide()
         self._set_busy(False)
         self._result = res
+        # consuma il flag "apri con" (vale solo per questa analisi)
+        auto_open = self._auto_open_document
+        self._auto_open_document = False
         self._clear_cards()
 
         if res.parse_errors:
@@ -1329,6 +1346,13 @@ class MainWindow(QMainWindow):
         )
         self.btn_extract.setEnabled(bool(res.content) and not self._is_pades_result)
         self.btn_open_doc.setEnabled(bool(res.content))
+
+        # "Apri con" di un .p7m + verifica verde: apri subito il documento
+        # incapsulato, come se si premesse "Apri documento" (disattivabile da
+        # Impostazioni ▸ Verifica).
+        if (auto_open and self._config.open_document_on_verify
+                and res.all_valid and res.content and not self._is_pades_result):
+            self.open_document()
 
     # -- estrazione ------------------------------------------------------- #
     def extract(self) -> None:
@@ -1874,7 +1898,10 @@ class CorianoApp(QApplication):
             return
         self.activate()
         win = self._window
-        QTimer.singleShot(0, lambda: win.analyze(path))
+        # "Apri con": solo per i .p7m, a verifica verde apri il documento
+        # incapsulato (non per i PDF PAdES, il cui contenuto è il PDF stesso).
+        auto_open = path.lower().endswith(".p7m")
+        QTimer.singleShot(0, lambda: win.analyze(path, auto_open_document=auto_open))
 
 
 def _file_from_argv(argv) -> str | None:

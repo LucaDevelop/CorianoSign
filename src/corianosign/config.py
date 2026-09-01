@@ -51,6 +51,8 @@ class AppConfig:
     verify_signatures: bool = True
     check_trust: bool = True            # valida catena verso le Trusted List
     revocation_online: bool = True      # controllo revoca CRL/OCSP
+    # "Apri con" di un .p7m: a verifica verde apri il documento incapsulato
+    open_document_on_verify: bool = True
 
     # --- firma: aspetto grafico PAdES --- #
     # il testo della firma grafica è sempre il Nome Cognome dal certificato.
@@ -111,6 +113,7 @@ def load_config() -> AppConfig:
         verify_signatures=bool(data.get("verify_signatures", True)),
         check_trust=bool(data.get("check_trust", True)),
         revocation_online=bool(data.get("revocation_online", True)),
+        open_document_on_verify=bool(data.get("open_document_on_verify", True)),
         sign_ask_reason=bool(data.get("sign_ask_reason", False)),
         sign_ask_location=bool(data.get("sign_ask_location", False)),
         sign_show_datetime=bool(data.get("sign_show_datetime", True)),
