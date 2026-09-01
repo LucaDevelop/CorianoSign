@@ -20,6 +20,7 @@ prova.pdf
 prova-firmato.pdf
 tests/fixtures/pades_firmato.pdf
 tests/fixtures/documento.pdf.p7m
+tests/fixtures/documento-lento.p7m
 
 # metadati editable install
 *.egg-info/

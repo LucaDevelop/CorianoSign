@@ -96,6 +96,14 @@ def validate_chain(
             # riusa i fetcher condivisi solo se il fetch è abilitato
             fetchers=fetchers if allow_fetching else None,
             revocation_mode=revocation_mode.value,
+            # Accetta la revoca CORRENTE (OCSP/CRL freschi) come valida anche per
+            # l'istante di firma nel passato. Senza questo, un OCSP fresco non
+            # "copre" il moment storico e pyhanko ripiega sulla CRL completa (che
+            # per le CA italiane pesa molti MB): una firma BES diventava lenta
+            # secondi/minuti anche avendo un OCSP valido e istantaneo. Se il
+            # certificato fosse davvero revocato, l'OCSP corrente lo direbbe
+            # comunque, quindi la sicurezza non cambia.
+            retroactive_revinfo=True,
             weak_hash_algos={"md5", "md2"},
         )
         validator = CertificateValidator(
