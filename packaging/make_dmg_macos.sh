@@ -22,6 +22,23 @@ ICON="packaging/CorianoSign.icns"
 echo "==> Creo $OUT"
 rm -f "$OUT"
 
+# sfondo con freccia "Trascina in Applicazioni": TIFF Retina (72+144 dpi) da
+# packaging/dmg_background.png + @2x. Se manca Pillow non serve: i PNG sono gia'
+# committati; tiffutil (sempre presente su macOS) unisce le due risoluzioni.
+BG_ARG=()
+BG_PNG="packaging/dmg_background.png"
+BG_2X="packaging/dmg_background@2x.png"
+if [ -f "$BG_PNG" ]; then
+    BG="$BG_PNG"
+    if [ -f "$BG_2X" ] && command -v tiffutil >/dev/null 2>&1; then
+        BG_TIFF="$(mktemp -t dmgbg).tiff"
+        if tiffutil -cathidpicheck "$BG_PNG" "$BG_2X" -out "$BG_TIFF" >/dev/null 2>&1; then
+            BG="$BG_TIFF"
+        fi
+    fi
+    BG_ARG=(--background "$BG")
+fi
+
 # 1) create-dmg (impaginazione curata). Richiede il permesso «Automazione ▸ Finder»:
 #    la prima volta il Terminale lo chiede; in ambienti headless non è concedibile
 #    e si ricade sul fallback hdiutil.
@@ -31,6 +48,7 @@ if command -v create-dmg >/dev/null; then
     create-dmg \
       --volname "CorianoSign ${VER}" \
       ${ICON:+--volicon "$ICON"} \
+      "${BG_ARG[@]}" \
       --window-pos 200 120 --window-size 640 400 --icon-size 128 \
       --icon "CorianoSign.app" 160 200 --hide-extension "CorianoSign.app" \
       --app-drop-link 480 200 --no-internet-enable \
