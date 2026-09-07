@@ -1114,6 +1114,8 @@ class MainWindow(QMainWindow):
         # controllo aggiornamenti dell'app all'avvio (in background, silenzioso)
         if self._config.auto_update_app:
             QTimer.singleShot(1200, lambda: self.check_app_update(manual=False))
+        # macOS: una volta sola, chiedi se rendere l'app predefinita per i .p7m
+        QTimer.singleShot(800, self._maybe_ask_default_p7m)
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
@@ -1443,6 +1445,35 @@ class MainWindow(QMainWindow):
                 f"Aggiornamento automatico Trusted List ({motivo})…"
             )
             self.update_trust(self._config.territories, silent=True)
+
+    def _maybe_ask_default_p7m(self) -> None:
+        """macOS: chiede UNA volta se rendere CorianoSign predefinita per i .p7m."""
+        if self._config.asked_default_p7m:
+            return
+        from . import macos_default_handler as mac
+        # solo app impacchettata su macOS, e solo se non è già la predefinita
+        if not mac.available() or mac.is_default():
+            return
+        # chiesto (una sola volta), qualunque sia la risposta
+        self._config.asked_default_p7m = True
+        appconfig.save_config(self._config)
+        resp = QMessageBox.question(
+            self, "App predefinita",
+            "Vuoi rendere CorianoSign l'applicazione predefinita per aprire i "
+            "file firmati .p7m?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if resp == QMessageBox.Yes:
+            if mac.set_default():
+                self.status.showMessage(
+                    "CorianoSign è ora l'app predefinita per i .p7m.", 6000)
+            else:
+                QMessageBox.warning(
+                    self, "Non riuscito",
+                    "Impossibile impostare l'associazione automaticamente. Puoi "
+                    "farlo da Finder: clic destro su un .p7m ▸ Ottieni "
+                    "informazioni ▸ «Apri con» ▸ CorianoSign ▸ «Modifica tutti».",
+                )
 
     # -- aggiornamento dell'app ------------------------------------------- #
     def check_app_update(self, manual: bool = False) -> None:

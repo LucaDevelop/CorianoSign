@@ -48,6 +48,7 @@ block_cipher = None
 
 hidden = [
     "corianosign.updater", "corianosign.aruba", "corianosign.pades",
+    "corianosign.macos_default_handler",
     # QtNetwork serve al lock a istanza singola (QLocalServer/QLocalSocket)
     "PySide6.QtNetwork",
 ]
@@ -135,13 +136,33 @@ if sys.platform == "darwin":
             "CFBundleVersion": _VERSION,
             "NSHumanReadableCopyright": "CorianoSign",
             "NSHighResolutionCapable": True,
-            # associazione tipo file .p7m
+            # macOS minimo: i binari Homebrew/Python richiedono macOS 26. Senza
+            # questo, su un macOS più vecchio l'app "rimbalza e muore" in
+            # silenzio; con questo macOS mostra "richiede macOS 26.0 o successivo".
+            "LSMinimumSystemVersion": "26.0",
+            # UTI statico per i .p7m: senza, l'estensione mappa su un UTI
+            # DINAMICO (dyn.*) e LaunchServices rifiuta di impostare l'handler
+            # predefinito (paramErr -50). Dichiararlo lo rende impostabile.
+            "UTExportedTypeDeclarations": [
+                {
+                    "UTTypeIdentifier": "it.coriano.p7m",
+                    "UTTypeDescription": "File firmato PKCS#7 (CAdES)",
+                    "UTTypeConformsTo": ["public.data"],
+                    "UTTypeIconFile": "CorianoSign.icns",
+                    "UTTypeTagSpecification": {
+                        "public.filename-extension": ["p7m"],
+                    },
+                }
+            ],
+            # associazione tipo file .p7m (tramite l'UTI dichiarato sopra)
             "CFBundleDocumentTypes": [
                 {
                     "CFBundleTypeName": "File firmato PKCS#7 (CAdES)",
-                    "CFBundleTypeExtensions": ["p7m"],
+                    "LSItemContentTypes": ["it.coriano.p7m"],
                     "CFBundleTypeRole": "Viewer",
-                    "LSHandlerRank": "Alternate",
+                    # Owner: l'app si candida come handler primario dei .p7m
+                    # (serve perché il primo avvio possa impostarla predefinita)
+                    "LSHandlerRank": "Owner",
                     "CFBundleTypeIconFile": "CorianoSign.icns",
                 }
             ],

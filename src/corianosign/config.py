@@ -43,6 +43,8 @@ class AppConfig:
     # --- generali --- #
     timezone: str = "Europe/Rome"
     auto_update_app: bool = True        # controlla aggiornamenti dell'app all'avvio
+    # macOS: già chiesto (una volta) se rendere l'app predefinita per i .p7m
+    asked_default_p7m: bool = False
 
     # --- verifica --- #
     auto_update: bool = True
@@ -107,6 +109,7 @@ def load_config() -> AppConfig:
     cfg = AppConfig(
         timezone=str(data.get("timezone", "Europe/Rome")) or "Europe/Rome",
         auto_update_app=bool(data.get("auto_update_app", True)),
+        asked_default_p7m=bool(data.get("asked_default_p7m", False)),
         auto_update=bool(data.get("auto_update", True)),
         interval_days=int(data.get("interval_days", DEFAULT_INTERVAL_DAYS)),
         territories=list(data.get("territories", ["IT"])) or ["IT"],

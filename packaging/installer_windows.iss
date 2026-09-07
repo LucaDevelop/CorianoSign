@@ -42,7 +42,7 @@ Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Crea un'icona sul desktop"; GroupDescription: "Icone aggiuntive:"; Flags: unchecked
-Name: "assocp7m"; Description: "Apri i file .p7m con CorianoSign"; GroupDescription: "Associazioni file:"
+Name: "assocp7m"; Description: "Imposta CorianoSign come app predefinita per i file .p7m"; GroupDescription: "Associazioni file:"
 
 [Files]
 ; l'intera cartella onedir prodotta da PyInstaller
@@ -56,9 +56,27 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: deskto
 [Registry]
 ; associazione file .p7m (solo se il task assocp7m è selezionato)
 Root: HKA; Subkey: "Software\Classes\.p7m\OpenWithProgids"; ValueType: string; ValueName: "CorianoSign.p7m"; ValueData: ""; Flags: uninsdeletevalue; Tasks: assocp7m
+; predefinita "classica": vale quando nessun'altra app è già stata scelta per i
+; .p7m (Windows protegge la scelta esistente dell'utente e non la sovrascrive)
+Root: HKA; Subkey: "Software\Classes\.p7m"; ValueType: string; ValueName: ""; ValueData: "CorianoSign.p7m"; Flags: uninsdeletevalue; Tasks: assocp7m
 Root: HKA; Subkey: "Software\Classes\CorianoSign.p7m"; ValueType: string; ValueName: ""; ValueData: "File firmato PKCS#7 (CAdES)"; Flags: uninsdeletekey; Tasks: assocp7m
 Root: HKA; Subkey: "Software\Classes\CorianoSign.p7m\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"; Tasks: assocp7m
 Root: HKA; Subkey: "Software\Classes\CorianoSign.p7m\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""; Tasks: assocp7m
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Avvia {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+const
+  SHCNE_ASSOCCHANGED = $08000000;
+  SHCNF_IDLIST = $0000;
+
+procedure SHChangeNotify(wEventId: Integer; uFlags: Cardinal; dwItem1, dwItem2: Cardinal);
+  external 'SHChangeNotify@shell32.dll stdcall';
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // dopo l'installazione avvisa Explorer del cambio associazioni (icona/.p7m)
+  if CurStep = ssPostInstall then
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, 0, 0);
+end;
