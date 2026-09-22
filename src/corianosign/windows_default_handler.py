@@ -65,9 +65,10 @@ def set_default() -> bool:
                               base + r"\shell\open\command") as k:
             winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}" "%1"')
         # estensione .p7m: aggiunge il ProgId tra gli handler e lo rende predefinito
+        # (REG_SZ vuole una stringa: "" non b"")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
                               r"Software\Classes\.p7m\OpenWithProgids") as k:
-            winreg.SetValueEx(k, PROGID, 0, winreg.REG_SZ, b"")
+            winreg.SetValueEx(k, PROGID, 0, winreg.REG_SZ, "")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.p7m") as k:
             winreg.SetValueEx(k, "", 0, winreg.REG_SZ, PROGID)
         # notifica a Explorer il cambio associazioni
@@ -76,6 +77,9 @@ def set_default() -> bool:
             ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
         except Exception:  # noqa: BLE001
             pass
-        return True
+        # su Win10/11 una UserChoice preesistente ha la precedenza e non è
+        # sovrascrivibile: consideriamo riuscito solo se ora risulta davvero
+        # predefinito (per il caso comune senza UserChoice funziona).
+        return is_default()
     except Exception:  # noqa: BLE001
         return False

@@ -1614,12 +1614,21 @@ class MainWindow(QMainWindow):
             if dh.set_default():
                 self.status.showMessage(
                     "CorianoSign è ora l'app predefinita per i .p7m.", 6000)
+            elif os.name == "nt":
+                # Win10/11: se esiste già una scelta utente per i .p7m non è
+                # sovrascrivibile da un programma -> apri le Impostazioni Windows
+                QMessageBox.information(
+                    self, "Imposta da Windows",
+                    "Windows non consente ai programmi di cambiare l'app "
+                    "predefinita per un tipo di file. Apro «App predefinite»: "
+                    "cerca l'estensione «.p7m» e scegli CorianoSign.")
+                QDesktopServices.openUrl(QUrl("ms-settings:defaultapps"))
             else:
                 QMessageBox.warning(
                     self, "Non riuscito",
                     "Impossibile impostare l'associazione automaticamente. Puoi "
-                    "farlo dalle impostazioni del sistema operativo (App "
-                    "predefinite / «Apri con» ▸ Modifica tutti).")
+                    "farlo da Finder: clic destro su un .p7m ▸ Ottieni "
+                    "informazioni ▸ «Apri con» ▸ CorianoSign ▸ «Modifica tutti».")
         else:
             # No: se ha spuntato «Non chiederlo più», non chiedere ai prossimi avvii
             if chk.isChecked():
