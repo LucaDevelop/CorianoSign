@@ -2,12 +2,16 @@
 PySide6==6.11.2
 asn1crypto==1.5.1
 cryptography==50.0.1
-pyhanko-certvalidator==0.31.4
+pyhanko-certvalidator==0.32.1
 signxml==5.1.0
 zeep==4.3.3
 tzdata==2026.3
 requests==2.34.2
 lxml==6.1.2
+
+# Firma locale da smart card / token USB (PKCS#11): pyHanko + python-pkcs11.
+# Fornisce anche la firma PAdES e gli attributi CAdES (signing-certificate-v2).
+pyhanko[pkcs11]==0.37.0
 
 # Strumento di packaging (installato solo per creare l'eseguibile)
 # pyinstaller==6.11.1

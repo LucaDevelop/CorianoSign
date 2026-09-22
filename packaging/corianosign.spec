@@ -48,19 +48,23 @@ block_cipher = None
 
 hidden = [
     "corianosign.updater", "corianosign.aruba", "corianosign.pades",
-    "corianosign.macos_default_handler",
+    "corianosign.macos_default_handler", "corianosign.pkcs11_sign",
     # QtNetwork serve al lock a istanza singola (QLocalServer/QLocalSocket)
     "PySide6.QtNetwork",
 ]
-# alcune sottodipendenze sono importate dinamicamente
-for pkg in ("pyhanko_certvalidator", "asn1crypto", "oscrypto", "signxml", "zeep", "tzdata"):
+# alcune sottodipendenze sono importate dinamicamente. pyhanko/pkcs11/aiohttp
+# servono alla firma da token (smart card / USB).
+for pkg in ("pyhanko_certvalidator", "pyhanko", "pkcs11", "aiohttp",
+            "asn1crypto", "oscrypto", "signxml", "zeep", "tzdata"):
     hidden += collect_submodules(pkg)
 
-# dati di signxml (schemi XML), zeep (template WSDL), tzdata (fusi) e anchor OJ
+# dati di signxml (schemi XML), zeep (template WSDL), tzdata (fusi), anchor OJ
+# e risorse di pyhanko (font di default per il riquadro di firma visibile)
 _extra_datas = (
     collect_data_files("signxml")
     + collect_data_files("zeep")
     + collect_data_files("tzdata")
+    + collect_data_files("pyhanko")
 )
 _extra_datas.append(
     (os.path.join(_ROOT, "packaging", "trust_anchors", "eu_lotl_signers.pem"),

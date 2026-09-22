@@ -64,6 +64,9 @@ class AppConfig:
     sign_image_mode: str = "default"    # "default" | "none" | "custom"
     sign_logo_path: str = ""            # usato solo con sign_image_mode == "custom"
     sign_image_only: bool = False
+    # firma con dispositivo locale (smart card / token USB): percorso della
+    # libreria PKCS#11 del token (vuoto = rilevamento automatico)
+    pkcs11_module: str = ""
 
     # --- firma: profili utenti remoti --- #
     profiles: list[SignProfile] = field(default_factory=list)
@@ -123,6 +126,7 @@ def load_config() -> AppConfig:
         sign_image_mode=str(data.get("sign_image_mode", "")),
         sign_logo_path=str(data.get("sign_logo_path", "")),
         sign_image_only=bool(data.get("sign_image_only", False)),
+        pkcs11_module=str(data.get("pkcs11_module", "")),
         profiles=profiles,
     )
     # migrazione: config vecchie senza sign_image_mode

@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -91,6 +92,10 @@ _OK = "#1a7f37"
 _WARN = "#9a6700"
 _BAD = "#cf222e"
 _MUTED = "#57606a"
+
+# valori speciali di "Firma come": nessun profilo / firma con dispositivo locale
+_SIGN_NONE = -1
+_SIGN_DEVICE = -2
 
 _TRUST_TEXT = {
     TrustStatus.TRUSTED: ("Certificato di CA accreditata (Trusted List)", _OK),
@@ -260,8 +265,11 @@ class SignWorker(QThread):
 
     def run(self) -> None:
         try:
-            from . import aruba
             p = self._p
+            if p.get("kind") == "pkcs11":
+                self._run_pkcs11(p)
+                return
+            from . import aruba
             common = dict(
                 user=p["user"], user_pwd=p["pwd"], otp=p["otp"],
                 wsdl_url=p["wsdl"], cert_id=p["cert_id"],
@@ -294,6 +302,39 @@ class SignWorker(QThread):
             self.done.emit(out)
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc))
+
+    def _run_pkcs11(self, p: dict) -> None:
+        """Firma con dispositivo locale (smart card / token USB) via PKCS#11."""
+        from . import pkcs11_sign as k
+        module = p["pkcs11_module"] or k.default_module()
+        if not module:
+            raise RuntimeError(
+                "Modulo PKCS#11 non trovato: indica il percorso della libreria "
+                "del token nel profilo (Impostazioni ▸ Firma).")
+        common = dict(
+            module_path=module, pin=p["pin"],
+            token_label=p["token_label"] or None,
+            cert_label=p["cert_label"] or None,
+        )
+        if p["cades"]:
+            self.done.emit(k.sign_p7m(p["data"], **common))
+            return
+        text = None
+        if p["want_visible"]:
+            name = k.signer_name(module, p["pin"],
+                                 token_label=p["token_label"] or None,
+                                 cert_label=p["cert_label"] or None)
+            lines = ([name.strip().upper()] if name and name.strip() else []) \
+                + p["date_lines"]
+            text = "\n".join(lines) if lines else None
+        lx, ly, rx, ry = p["rect"]
+        out = k.sign_pdf(
+            p["data"], visible=p["want_visible"], page=p["page"],
+            box=(lx, ly, rx, ry),
+            text=None if p["image_only"] else text,
+            image_png=p["image_bin"] or None,
+            reason=p["reason"], location=p["location"], **common)
+        self.done.emit(out)
 
 
 # --------------------------------------------------------------------------- #
@@ -733,6 +774,30 @@ class SettingsDialog(QDialog):
         ug.addLayout(pf, 1)
         lay.addWidget(grp_u, 1)
 
+        # firma con dispositivo locale: la SCELTA è fissa nel menu «Firma come»
+        # della finestra principale; qui solo la libreria del token (opzionale).
+        grp_dev = QGroupBox("Dispositivo (smart card / token USB)")
+        dg = QFormLayout(grp_dev)
+        self.dev_module = QLineEdit()
+        self.dev_module.setText(cfg.pkcs11_module)
+        self.dev_module.setPlaceholderText("vuoto = rilevamento automatico")
+        b_devmod = QPushButton("Sfoglia…")
+        b_devmod.clicked.connect(self._pick_module)
+        b_detect = QPushButton("🔍  Rileva token")
+        b_detect.clicked.connect(self._detect_token)
+        drow = QHBoxLayout()
+        drow.setContentsMargins(0, 0, 0, 0)
+        drow.addWidget(self.dev_module, 1)
+        drow.addWidget(b_devmod)
+        drow.addWidget(b_detect)
+        dg.addRow("Libreria PKCS#11:", self._wrap_lay(drow))
+        note = QLabel("Per firmare col dispositivo scegli «Dispositivo» in "
+                      "«Firma come» nella schermata di firma.")
+        note.setStyleSheet(f"color:{_MUTED};")
+        note.setWordWrap(True)
+        dg.addRow(note)
+        lay.addWidget(grp_dev)
+
         self._refresh_profile_list()
         if self._profiles:
             self.prof_list.setCurrentRow(0)
@@ -836,6 +901,43 @@ class SettingsDialog(QDialog):
             else:
                 self._set_profile_form_enabled(False)
 
+    def _pick_module(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Libreria PKCS#11 del token", "",
+            "Librerie (*.so *.dylib *.dll);;Tutti i file (*)")
+        if path:
+            self.dev_module.setText(path)
+
+    def _detect_token(self) -> None:
+        """Prova a leggere il token: verifica libreria/PIN ed elenca i certificati."""
+        from . import pkcs11_sign as k
+        module = self.dev_module.text().strip() or k.default_module()
+        if not module:
+            QMessageBox.warning(
+                self, "Rileva token",
+                "Nessun modulo PKCS#11 trovato: indica la libreria del token.")
+            return
+        pin, ok = QInputDialog.getText(
+            self, "PIN", "PIN del token (per elencare i certificati):",
+            QLineEdit.Password)
+        if not ok:
+            return
+        try:
+            info = k.list_objects(module, pin=pin or None)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Rileva token", f"Errore: {exc}")
+            return
+        certs = info.get("certificates", [])
+        if not certs:
+            QMessageBox.information(
+                self, "Rileva token", "Nessun certificato trovato sul token.")
+            return
+        righe = "\n".join(f"• {c['cn'] or c['label']}" for c in certs)
+        QMessageBox.information(
+            self, "Rileva token",
+            f"Token «{info.get('token','')}» rilevato.\n"
+            f"Certificati disponibili:\n{righe}")
+
     def result_config(self) -> appconfig.AppConfig:
         c = self._cfg
         c.timezone = self.combo_tz.currentText().strip() or "Europe/Rome"
@@ -849,6 +951,7 @@ class SettingsDialog(QDialog):
         c.territories = self.combo_terr.currentData()
         c.sign_ask_reason = self.chk_ask_reason.isChecked()
         c.sign_ask_location = self.chk_ask_location.isChecked()
+        c.pkcs11_module = self.dev_module.text().strip()
         c.sign_show_datetime = self.chk_show_dt.isChecked()
         c.sign_image_mode = self._image_mode()
         c.sign_logo_path = self._logo_path
@@ -1070,6 +1173,45 @@ class CredentialsDialog(QDialog):
 
     def values(self) -> tuple[str, str]:
         return self.pwd.text(), self.otp.text()
+
+    def reason_text(self) -> str:
+        return self.reason.text() if self.reason is not None else ""
+
+    def location_text(self) -> str:
+        return self.location.text() if self.location is not None else ""
+
+
+class PinDialog(QDialog):
+    """Chiede il PIN del dispositivo (mai salvato); opzionalmente motivo/luogo."""
+
+    def __init__(self, label: str, ask_reason: bool = False,
+                 ask_location: bool = False, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Firma con dispositivo")
+        self.setModal(True)
+        form = QFormLayout(self)
+        if label:
+            form.addRow(QLabel(f"Dispositivo: <b>{label}</b>"))
+        self.pin = QLineEdit()
+        self.pin.setEchoMode(QLineEdit.Password)
+        form.addRow("PIN:", self.pin)
+        self.reason = QLineEdit() if ask_reason else None
+        if self.reason is not None:
+            self.reason.setPlaceholderText("facoltativa")
+            form.addRow("Motivazione (opzionale):", self.reason)
+        self.location = QLineEdit() if ask_location else None
+        if self.location is not None:
+            self.location.setPlaceholderText("facoltativo")
+            form.addRow("Luogo (opzionale):", self.location)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText("Firma")
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        form.addRow(bb)
+        self.pin.setFocus()
+
+    def pin_text(self) -> str:
+        return self.pin.text()
 
     def reason_text(self) -> str:
         return self.reason.text() if self.reason is not None else ""
@@ -1665,6 +1807,7 @@ class MainWindow(QMainWindow):
         prow2.addWidget(QLabel("Firma come:"))
         self.sign_profile = QComboBox()
         self.sign_profile.currentIndexChanged.connect(self._apply_sign_appearance)
+        self.sign_profile.currentIndexChanged.connect(self._update_sign_button)
         prow2.addWidget(self.sign_profile, 1)
         lay.addLayout(prow2)
 
@@ -1691,11 +1834,20 @@ class MainWindow(QMainWindow):
         self.sign_profile.clear()
         for i, p in enumerate(self._config.profiles):
             self.sign_profile.addItem(p.label(), i)
-        if self._config.profiles:
-            self.sign_profile.setEnabled(True)
-        else:
-            self.sign_profile.addItem("(nessun utente — aggiungine in Impostazioni)", -1)
-            self.sign_profile.setEnabled(False)
+        # voce fissa: firma con dispositivo locale (smart card / token USB)
+        self.sign_profile.addItem("🔑  Dispositivo (smart card / token USB)",
+                                  _SIGN_DEVICE)
+        self.sign_profile.setEnabled(True)
+        self._update_sign_button()
+
+    def _update_sign_button(self) -> None:
+        """Etichetta del pulsante di firma in base al profilo selezionato."""
+        if not hasattr(self, "btn_sign"):
+            return
+        idx = self.sign_profile.currentData()
+        self.btn_sign.setText("🖊  Firma con dispositivo (PIN)"
+                              if idx == _SIGN_DEVICE
+                              else "🖊  Firma con Aruba (OTP)")
 
     def _load_logo_bytes(self) -> bytes:
         return _signature_bytes(self._config)
@@ -1757,35 +1909,54 @@ class MainWindow(QMainWindow):
     def do_sign(self) -> None:
         if not self._sign_src:
             return
-        # profilo utente selezionato
-        idx = self.sign_profile.currentData()
-        if idx is None or idx < 0 or idx >= len(self._config.profiles):
-            QMessageBox.warning(
-                self, "Nessun utente",
-                "Aggiungi almeno un utente di firma remota in «Impostazioni ▸ Firma».")
-            return
-        prof = self._config.profiles[idx]
-        if not prof.user or not prof.domain:
-            QMessageBox.warning(self, "Profilo incompleto",
-                                "Il profilo selezionato non ha utente e dominio.")
-            return
-
         cfg = self._config
+        idx = self.sign_profile.currentData()
+        is_token = idx == _SIGN_DEVICE
+        prof = None
+        if not is_token:
+            # profilo utente Aruba selezionato
+            if idx is None or idx < 0 or idx >= len(self._config.profiles):
+                QMessageBox.warning(
+                    self, "Nessun utente",
+                    "Aggiungi un utente di firma remota in «Impostazioni ▸ Firma» "
+                    "oppure scegli «Dispositivo» per firmare col token.")
+                return
+            prof = self._config.profiles[idx]
+            if not prof.user or not prof.domain:
+                QMessageBox.warning(self, "Profilo incompleto",
+                                    "Il profilo selezionato non ha utente e dominio.")
+                return
+
         cades = self.rb_cades.isChecked()
         want_visible = (not cades) and self.grp_visible.isChecked()
-        dlg = CredentialsDialog(
-            prof.user,
-            ask_reason=want_visible and cfg.sign_ask_reason,
-            ask_location=want_visible and cfg.sign_ask_location,
-            parent=self)
-        if dlg.exec() != QDialog.Accepted:
-            return
-        pwd, otp = dlg.values()
-        if not pwd or not otp:
-            QMessageBox.warning(self, "Dati mancanti", "Password e OTP sono richiesti.")
-            return
 
-        from . import aruba
+        # credenziali: PIN per il dispositivo, password+OTP per Aruba (mai salvati)
+        if is_token:
+            dlg = PinDialog(
+                "smart card / token",
+                ask_reason=want_visible and cfg.sign_ask_reason,
+                ask_location=want_visible and cfg.sign_ask_location,
+                parent=self)
+            if dlg.exec() != QDialog.Accepted:
+                return
+            pin = dlg.pin_text()
+            if not pin:
+                QMessageBox.warning(self, "Dati mancanti", "Il PIN è richiesto.")
+                return
+        else:
+            dlg = CredentialsDialog(
+                prof.user,
+                ask_reason=want_visible and cfg.sign_ask_reason,
+                ask_location=want_visible and cfg.sign_ask_location,
+                parent=self)
+            if dlg.exec() != QDialog.Accepted:
+                return
+            pwd, otp = dlg.values()
+            if not pwd or not otp:
+                QMessageBox.warning(self, "Dati mancanti",
+                                    "Password e OTP sono richiesti.")
+                return
+
         rect = self.preview.pdf_rect() if (self.preview and _HAS_QTPDF) else None
         lx, ly, rx, ry = rect if rect else (50, 50, 300, 130)
         # data/ora su righe separate (il NOME lo recupera il worker dal certificato)
@@ -1793,17 +1964,12 @@ class MainWindow(QMainWindow):
         if want_visible and cfg.sign_show_datetime:
             now = _now_in_tz(cfg.timezone)
             date_lines = [now.strftime("%d/%m/%Y"), now.strftime("%H:%M:%S")]
+
+        # parametri comuni ai due backend
         params = dict(
+            kind="pkcs11" if is_token else "aruba",
             data=Path(self._sign_src).read_bytes(),
             cades=cades,
-            level=self.sign_level.currentData(),
-            # NON inviamo signingTime: Aruba usa l'ora esatta del server (UTC).
-            # Inviare l'ora locale la farebbe interpretare come UTC -> "data futura".
-            # Il fuso serve solo alla data MOSTRATA nel riquadro (testo grafico).
-            signing_time=None,
-            user=prof.user, pwd=pwd, otp=otp, otp_type=prof.domain,
-            cert_id=prof.cert_id, hsm=prof.hsm,
-            wsdl=(aruba.WSDL_DEMO if prof.demo else aruba.WSDL_PROD),
             want_visible=want_visible,
             page=self.sign_page.value(),
             rect=(lx, ly, rx, ry),
@@ -1811,11 +1977,31 @@ class MainWindow(QMainWindow):
             image_bin=self._load_logo_bytes(),
             image_only=cfg.sign_image_only,
             date_lines=date_lines,
-            profile_name=prof.name,
+            profile_name=prof.name if prof else "",
         )
+        if is_token:
+            # dispositivo: libreria dalle impostazioni (o auto), token/cert automatici
+            params.update(
+                pin=pin,
+                pkcs11_module=cfg.pkcs11_module,
+                token_label="",
+                cert_label="",
+            )
+        else:
+            from . import aruba
+            params.update(
+                level=self.sign_level.currentData(),
+                # NON inviamo signingTime: Aruba usa l'ora del server (UTC).
+                signing_time=None,
+                user=prof.user, pwd=pwd, otp=otp, otp_type=prof.domain,
+                cert_id=prof.cert_id, hsm=prof.hsm,
+                wsdl=(aruba.WSDL_DEMO if prof.demo else aruba.WSDL_PROD),
+            )
         self.btn_sign.setEnabled(False)
         self.sign_result.setStyleSheet(f"color:{_MUTED};")
-        self.sign_result.setText("Firma in corso… (invio ad Aruba)")
+        self.sign_result.setText(
+            "Firma in corso… (dispositivo)" if is_token
+            else "Firma in corso… (invio ad Aruba)")
         QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         self._sign_worker = SignWorker(params)
         self._sign_worker.done.connect(lambda b, c=cades: self._on_signed(b, c))
