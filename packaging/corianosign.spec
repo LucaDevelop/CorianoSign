@@ -48,7 +48,8 @@ block_cipher = None
 
 hidden = [
     "corianosign.updater", "corianosign.aruba", "corianosign.pades",
-    "corianosign.macos_default_handler", "corianosign.pkcs11_sign",
+    "corianosign.macos_default_handler", "corianosign.windows_default_handler",
+    "corianosign.default_handler", "corianosign.pkcs11_sign",
     # QtNetwork serve al lock a istanza singola (QLocalServer/QLocalSocket)
     "PySide6.QtNetwork",
 ]

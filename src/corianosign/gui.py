@@ -1589,33 +1589,42 @@ class MainWindow(QMainWindow):
             self.update_trust(self._config.territories, silent=True)
 
     def _maybe_ask_default_p7m(self) -> None:
-        """macOS: chiede UNA volta se rendere CorianoSign predefinita per i .p7m."""
-        if self._config.asked_default_p7m:
+        """All'avvio: se CorianoSign non è l'app predefinita per i .p7m, chiede
+        se impostarla. Ripropone a ogni avvio finché non è predefinita, a meno
+        che l'utente non abbia spuntato «Non chiederlo più» rispondendo No."""
+        if self._config.dont_ask_default_p7m:
             return
-        from . import macos_default_handler as mac
-        # solo app impacchettata su macOS, e solo se non è già la predefinita
-        if not mac.available() or mac.is_default():
+        from . import default_handler as dh
+        # solo app impacchettata (mac/win) e solo se NON è già la predefinita
+        if not dh.available() or dh.is_default():
             return
-        # chiesto (una sola volta), qualunque sia la risposta
-        self._config.asked_default_p7m = True
-        appconfig.save_config(self._config)
-        resp = QMessageBox.question(
-            self, "App predefinita",
-            "Vuoi rendere CorianoSign l'applicazione predefinita per aprire i "
-            "file firmati .p7m?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
-        )
+
+        box = QMessageBox(self)
+        box.setWindowTitle("App predefinita")
+        box.setIcon(QMessageBox.Question)
+        box.setText("Vuoi rendere CorianoSign l'applicazione predefinita per "
+                    "aprire i file firmati .p7m?")
+        chk = QCheckBox("Non chiederlo più")
+        box.setCheckBox(chk)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.Yes)
+        resp = box.exec()
+
         if resp == QMessageBox.Yes:
-            if mac.set_default():
+            if dh.set_default():
                 self.status.showMessage(
                     "CorianoSign è ora l'app predefinita per i .p7m.", 6000)
             else:
                 QMessageBox.warning(
                     self, "Non riuscito",
                     "Impossibile impostare l'associazione automaticamente. Puoi "
-                    "farlo da Finder: clic destro su un .p7m ▸ Ottieni "
-                    "informazioni ▸ «Apri con» ▸ CorianoSign ▸ «Modifica tutti».",
-                )
+                    "farlo dalle impostazioni del sistema operativo (App "
+                    "predefinite / «Apri con» ▸ Modifica tutti).")
+        else:
+            # No: se ha spuntato «Non chiederlo più», non chiedere ai prossimi avvii
+            if chk.isChecked():
+                self._config.dont_ask_default_p7m = True
+                appconfig.save_config(self._config)
 
     # -- aggiornamento dell'app ------------------------------------------- #
     def check_app_update(self, manual: bool = False) -> None:
@@ -1745,7 +1754,8 @@ class MainWindow(QMainWindow):
         orow.addWidget(self.rb_pades)
         orow.addWidget(self.rb_cades)
         orow.addSpacing(20)
-        orow.addWidget(QLabel("Livello:"))
+        self.lbl_level = QLabel("Livello:")
+        orow.addWidget(self.lbl_level)
         self.sign_level = QComboBox()
         for label, val in [("Predefinito", ""), ("B", "B"), ("T", "T"),
                            ("LT", "LT"), ("LTA", "LTA")]:
@@ -1845,9 +1855,13 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "btn_sign"):
             return
         idx = self.sign_profile.currentData()
-        self.btn_sign.setText("🖊  Firma con dispositivo (PIN)"
-                              if idx == _SIGN_DEVICE
+        is_device = idx == _SIGN_DEVICE
+        self.btn_sign.setText("🖊  Firma con dispositivo (PIN)" if is_device
                               else "🖊  Firma con Aruba (OTP)")
+        # il "Livello" (CAdES-T/LTA) vale solo per Aruba: nascondilo col dispositivo
+        if hasattr(self, "sign_level"):
+            self.lbl_level.setVisible(not is_device)
+            self.sign_level.setVisible(not is_device)
 
     def _load_logo_bytes(self) -> bytes:
         return _signature_bytes(self._config)
