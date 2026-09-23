@@ -8,5 +8,5 @@ App cross-platform (macOS Apple Silicon / Windows) per:
   * estrarre il documento originale contenuto nella busta.
 """
 
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 __app_name__ = "CorianoSign"
