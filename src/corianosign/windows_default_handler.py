@@ -50,36 +50,86 @@ def is_default() -> bool:
     return current_handler() == PROGID
 
 
+def _register_progid() -> None:
+    """Registra il ProgId CorianoSign.p7m e lo aggiunge tra gli handler dei .p7m.
+
+    Serve perché l'app COMPAIA nella finestra «Apri con» di Windows. Non imposta
+    la predefinita (su Win10/11 quella la sceglie l'utente).
+    """
+    import winreg
+    exe = sys.executable
+    base = r"Software\Classes\%s" % PROGID
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base) as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "File firmato PKCS#7 (CAdES)")
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + r"\DefaultIcon") as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}",0')
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + r"\shell\open\command") as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}" "%1"')
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
+                          r"Software\Classes\.p7m\OpenWithProgids") as k:
+        winreg.SetValueEx(k, PROGID, 0, winreg.REG_SZ, "")  # REG_SZ = stringa
+
+
 def set_default() -> bool:
-    """Best-effort: registra il ProgId e imposta l'associazione classica dei .p7m."""
+    """Prova a impostare la predefinita scrivendo l'associazione classica.
+
+    Funziona nel caso comune (nessuna scelta utente preesistente); su Win10/11
+    con una UserChoice già impostata NON è possibile da programma: in quel caso
+    ritorna False e si usa ``open_with_dialog`` (la finestra nativa «Apri con»).
+    """
     import winreg
     try:
-        exe = sys.executable
-        # ProgId dell'app (descrizione, icona, comando di apertura)
-        base = r"Software\Classes\%s" % PROGID
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base) as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "File firmato PKCS#7 (CAdES)")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + r"\DefaultIcon") as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}",0')
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
-                              base + r"\shell\open\command") as k:
-            winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}" "%1"')
-        # estensione .p7m: aggiunge il ProgId tra gli handler e lo rende predefinito
-        # (REG_SZ vuole una stringa: "" non b"")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
-                              r"Software\Classes\.p7m\OpenWithProgids") as k:
-            winreg.SetValueEx(k, PROGID, 0, winreg.REG_SZ, "")
+        _register_progid()
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.p7m") as k:
             winreg.SetValueEx(k, "", 0, winreg.REG_SZ, PROGID)
-        # notifica a Explorer il cambio associazioni
         try:
             import ctypes
             ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
         except Exception:  # noqa: BLE001
             pass
-        # su Win10/11 una UserChoice preesistente ha la precedenza e non è
-        # sovrascrivibile: consideriamo riuscito solo se ora risulta davvero
-        # predefinito (per il caso comune senza UserChoice funziona).
         return is_default()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def open_with_dialog() -> bool:
+    """Apre la finestra NATIVA di Windows «Apri con» per i .p7m.
+
+    L'utente sceglie CorianoSign dall'elenco e Windows lo imposta come
+    predefinito per i .p7m (unico modo consentito quando esiste gia' una scelta
+    utente). Ritorna True se la finestra è stata mostrata.
+    """
+    import ctypes
+    import os
+    import tempfile
+    from ctypes import wintypes
+    try:
+        _register_progid()  # così CorianoSign compare nell'elenco
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        fd, path = tempfile.mkstemp(suffix=".p7m")
+        os.close(fd)
+
+        class OPENASINFO(ctypes.Structure):
+            _fields_ = [
+                ("pcszFile", ctypes.c_wchar_p),
+                ("pcszClass", ctypes.c_wchar_p),
+                ("oaifInFlags", ctypes.c_int),
+            ]
+
+        OAIF_ALLOW_REGISTRATION = 0x00000001
+        OAIF_REGISTER_EXT = 0x00000002
+        fn = ctypes.windll.shell32.SHOpenWithDialog
+        fn.argtypes = [wintypes.HWND, ctypes.POINTER(OPENASINFO)]
+        fn.restype = ctypes.c_long
+        info = OPENASINFO(path, None,
+                          OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT)
+        fn(None, ctypes.byref(info))  # modale: ritorna alla chiusura
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return True
     except Exception:  # noqa: BLE001
         return False

@@ -42,3 +42,13 @@ def set_default() -> bool:
         return bool(impl and impl.set_default())
     except Exception:  # noqa: BLE001
         return False
+
+
+def open_with_dialog() -> bool:
+    """Windows: mostra la finestra nativa «Apri con» per i .p7m. Altrove no-op."""
+    try:
+        impl = _impl()
+        fn = getattr(impl, "open_with_dialog", None)
+        return bool(fn and fn())
+    except Exception:  # noqa: BLE001
+        return False
