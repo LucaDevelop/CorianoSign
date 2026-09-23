@@ -1615,18 +1615,20 @@ class MainWindow(QMainWindow):
                 self.status.showMessage(
                     "CorianoSign è ora l'app predefinita per i .p7m.", 6000)
             elif os.name == "nt":
-                # Win10/11: la predefinita la può impostare solo l'utente, dalla
-                # finestra nativa «Apri con». Gliela apriamo con un aiuto chiaro.
+                # Windows 11 non consente a nessun programma di impostare la
+                # predefinita: la deve scegliere l'utente. Diamo i passi più
+                # rapidi e apriamo le Impostazioni ▸ App predefinite.
                 QMessageBox.information(
-                    self, "Un ultimo passaggio",
-                    "Ora Windows aprirà una finestra: seleziona <b>CorianoSign</b> "
-                    "dall'elenco, assicurati che sia spuntato <b>«Usa sempre "
-                    "questa app»</b> e premi <b>OK</b>.")
-                if not dh.open_with_dialog():
-                    QDesktopServices.openUrl(QUrl("ms-settings:defaultapps"))
-                if dh.is_default():
-                    self.status.showMessage(
-                        "CorianoSign è ora l'app predefinita per i .p7m.", 6000)
+                    self, "Come impostare CorianoSign su Windows",
+                    "Windows non permette alle app di impostarsi da sole come "
+                    "predefinite. Il modo più rapido:<br><br>"
+                    "1. fai <b>clic destro</b> su un file <b>.p7m</b><br>"
+                    "2. <b>Apri con</b> ▸ <b>Scegli un'altra app</b><br>"
+                    "3. seleziona <b>CorianoSign</b> e spunta "
+                    "<b>«Usa sempre questa app»</b> ▸ OK<br><br>"
+                    "In alternativa apro ora <b>Impostazioni ▸ App predefinite</b>: "
+                    "cerca «CorianoSign» e imposta il tipo di file «.p7m».")
+                QDesktopServices.openUrl(QUrl("ms-settings:defaultapps"))
             else:
                 QMessageBox.warning(
                     self, "Non riuscito",
