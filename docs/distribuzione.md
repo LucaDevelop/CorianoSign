@@ -84,10 +84,19 @@ cartella scrivibile dell'installer Inno: così **l'auto-aggiornamento continua a
 funzionare** senza mai chiedere l'amministratore.
 
 ### Compilare l'MSI
-Sul PC Windows, una tantum, installa il **WiX Toolset** (richiede il .NET SDK):
+Sul PC Windows, una tantum, installa il **WiX Toolset v5** (richiede il .NET
+SDK). Usa la **v5, non la v7**: dalla v6 WiX richiede di accettare la EULA della
+*Open Source Maintenance Fee* (errore `WIX7015`); la v5 è completa e libera.
 
 ```powershell
-dotnet tool install --global wix
+dotnet tool install --global wix --version 5.0.2
+```
+
+Se avevi già installato la v7, sostituiscila:
+
+```powershell
+dotnet tool uninstall --global wix
+dotnet tool install --global wix --version 5.0.2
 ```
 
 Poi, dopo aver compilato l'app (`packaging\build_windows.ps1`):
