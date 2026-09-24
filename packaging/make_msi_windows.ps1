@@ -54,7 +54,7 @@ $wixMajor = 0
 if ($wixVer -match '^\s*(\d+)\.') { $wixMajor = [int]$Matches[1] }
 if ($wixMajor -ge 6) {
     throw @"
-Rilevato WiX v$wixMajor: dalla v6 serve accettare la EULA OSMF (errore WIX7015).
+Rilevato WiX v$($wixMajor): dalla v6 serve accettare la EULA OSMF (errore WIX7015).
 Passa alla v5 (libera e completa):
     dotnet tool uninstall --global wix
     dotnet tool install --global wix --version 5.0.2
