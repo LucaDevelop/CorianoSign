@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pacchetto MSI PER-UTENTE di CorianoSign (WiX Toolset v4/v5).
+
+  Scopo: distribuzione centralizzata via Group Policy (GPSI) mantenendo
+  l'auto-update. È installato SOLO per l'utente corrente in
+  %LocalAppData%\Programs\CorianoSign (nessun privilegio di amministratore),
+  la stessa cartella scrivibile che usa l'installer Inno per-utente: così
+  l'auto-aggiornamento integrato (updater.py, robocopy sulla cartella) continua
+  a funzionare senza admin, a differenza di un'installazione per-macchina in
+  Program Files.
+
+  Deploy via GPO: assegnare/pubblicare questo MSI agli UTENTI
+  (Configurazione utente ▸ Criteri ▸ Impostazioni software), NON ai computer.
+
+  Compilazione: packaging\make_msi_windows.ps1 (richiede il tool 'wix').
+  La versione arriva dal preprocessore: wix build -d Version=1.3.3 ...
+
+  NOTA: l'UpgradeCode NON va mai cambiato tra le versioni (serve a WiX per
+  riconoscere e sostituire la versione precedente durante l'upgrade).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="CorianoSign"
+      Manufacturer="Comune di Coriano"
+      Version="$(Version)"
+      UpgradeCode="9F2A7C31-4B8E-4D6A-A1F3-2E5B8C9D0A7F"
+      Scope="perUser"
+      Compressed="yes"
+      Language="1040"
+      Codepage="1252">
+
+    <!-- Sostituisce automaticamente una versione precedente già installata. -->
+    <MajorUpgrade
+        DowngradeErrorMessage="È già installata una versione più recente di CorianoSign." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="CorianoSign.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <!-- Link "supporto" nel Pannello di controllo ▸ App (facoltativo). -->
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/LucaDevelop/CorianoSign" />
+
+    <!--
+      Cartella d'installazione: %LocalAppData%\Programs\CorianoSign.
+      È la stessa posizione dell'installer per-utente Inno ({localappdata}\
+      Programs), quindi l'auto-update trova e riscrive la cartella senza admin.
+    -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="CorianoSign" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Voce nel menu Start dell'utente. -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppShortcutFolder" Name="CorianoSign" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="CorianoSign" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="AppShortcut" />
+      <ComponentRef Id="FileAssoc" />
+    </Feature>
+  </Package>
+
+  <!--
+    Tutti i file dell'app: harvest automatico della cartella onedir prodotta da
+    PyInstaller (dist\CorianoSign\). L'elemento <Files> genera i componenti con
+    GUID deterministici, così il MajorUpgrade resta pulito tra le versioni.
+  -->
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="..\dist\CorianoSign\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Collegamento nel menu Start (componente per-utente con keypath HKCU). -->
+  <Fragment>
+    <Component Id="AppShortcut" Directory="AppShortcutFolder" Guid="*">
+      <Shortcut Id="StartMenuShortcut"
+                Name="CorianoSign"
+                Target="[INSTALLFOLDER]CorianoSign.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RemoveFolder Id="RemoveAppShortcutFolder" Directory="AppShortcutFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\CorianoSign"
+                     Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <!--
+    Associazione .p7m (per-utente, in HKCU\Software\Classes). Come per l'installer
+    Inno: registra il ProgId CorianoSign.p7m (così l'app compare in «Apri con») e
+    imposta l'associazione "classica". Su Win10/11 la predefinita EFFETTIVA resta
+    la scelta dell'utente (UserChoice, protetta da hash): questa vale quando
+    l'utente non ha ancora scelto un'app per i .p7m.
+  -->
+  <Fragment>
+    <Component Id="FileAssoc" Directory="INSTALLFOLDER" Guid="*">
+      <RegistryKey Root="HKCU" Key="Software\Classes\CorianoSign.p7m">
+        <RegistryValue Type="string" Value="File firmato PKCS#7 (CAdES)" />
+        <RegistryValue Key="DefaultIcon" Type="string"
+                       Value="[INSTALLFOLDER]CorianoSign.exe,0" />
+        <RegistryValue Key="shell\open\command" Type="string"
+                       Value="&quot;[INSTALLFOLDER]CorianoSign.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+      <RegistryValue Root="HKCU" Key="Software\Classes\.p7m\OpenWithProgids"
+                     Name="CorianoSign.p7m" Type="string" Value="" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.p7m"
+                     Type="string" Value="CorianoSign.p7m" KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>

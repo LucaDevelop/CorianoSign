@@ -69,6 +69,54 @@ Per eliminare del tutto l'avviso servirebbe firmare l'eseguibile e il setup con 
 certificato Authenticode (o Azure Trusted Signing): vedi la sezione «Windows
 silenzioso» più sotto.
 
+## Windows — MSI per-utente (deploy via Group Policy)
+
+Per installare CorianoSign in modo centralizzato su più PC di un dominio tramite
+**Group Policy Software Installation (GPSI)** c'è un secondo pacchetto: un **MSI
+per-utente**. È pensato per l'IT aziendale e **si affianca** all'installer `.exe`
+(che resta la via consigliata per il singolo utente); non lo sostituisce.
+
+Perché **per-utente** e non per-macchina: un MSI per-macchina installerebbe in
+`C:\Program Files`, dove un utente normale non può scrivere → **l'auto-update si
+romperebbe** (servirebbero i privilegi admin ad ogni aggiornamento). Il pacchetto
+per-utente installa invece in `%LocalAppData%\Programs\CorianoSign`, la stessa
+cartella scrivibile dell'installer Inno: così **l'auto-aggiornamento continua a
+funzionare** senza mai chiedere l'amministratore.
+
+### Compilare l'MSI
+Sul PC Windows, una tantum, installa il **WiX Toolset** (richiede il .NET SDK):
+
+```powershell
+dotnet tool install --global wix
+```
+
+Poi, dopo aver compilato l'app (`packaging\build_windows.ps1`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\make_msi_windows.ps1
+```
+
+Risultato: `dist\CorianoSign-<ver>-peruser.msi`. L'`UpgradeCode` è fisso, quindi
+una nuova versione **sostituisce** automaticamente la precedente (major upgrade).
+
+### Distribuire via GPO
+Nella *Group Policy Management Console*, in **Configurazione utente ▸ Criteri ▸
+Impostazioni software ▸ Installazione software**, aggiungi l'MSI da una **share di
+rete** leggibile dagli utenti e scegli **Assegnato**. Va assegnato agli **utenti**
+(non ai computer): l'installazione per-utente si applica al **logon**. Per
+aggiornare, ridistribuisci il nuovo MSI come *upgrade* del pacchetto esistente.
+
+Installazione/disinstallazione manuale per prove (senza admin):
+
+```
+msiexec /i CorianoSign-<ver>-peruser.msi /qb
+msiexec /x CorianoSign-<ver>-peruser.msi /qb
+```
+
+> **Firma**: come l'`.exe`, l'MSI non è firmato. In un dominio GPO in genere non è
+> un problema (la share è fidata); per altri contesti vale quanto detto in
+> «Windows silenzioso» più sotto (firma Authenticode dell'MSI con `signtool`).
+
 ## macOS senza avvisi: firma Developer ID + notarizzazione
 
 Per eliminare del tutto l'avviso di Gatekeeper (app che si apre con un doppio
@@ -131,4 +179,5 @@ Quando avrai le credenziali, la firma si aggiunge in `make_installer_windows.ps1
 | Piattaforma | Comando | Output |
 |---|---|---|
 | macOS | `make_dmg_macos.sh` | `dist/CorianoSign-<ver>.dmg` |
-| Windows | `make_installer_windows.ps1` | `dist\CorianoSign-<ver>-setup.exe` |
+| Windows (utente singolo) | `make_installer_windows.ps1` | `dist\CorianoSign-<ver>-setup.exe` |
+| Windows (GPO, per-utente) | `make_msi_windows.ps1` | `dist\CorianoSign-<ver>-peruser.msi` |
