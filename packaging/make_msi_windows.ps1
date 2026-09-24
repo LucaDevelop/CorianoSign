@@ -74,7 +74,14 @@ Write-Host "==> Compilo l'MSI per-utente versione $Version"
 if ($LASTEXITCODE -ne 0) { throw "Compilazione MSI fallita ($LASTEXITCODE)" }
 
 Write-Host ""
-Write-Host "==> Fatto: $out"
+# Rete di sicurezza: se l'harvest dei file fallisce (path errato) WiX emette solo
+# un WARNING e produce comunque un MSI, ma senza l'app dentro (pochi KB). L'app
+# reale pesa decine di MB: sotto una soglia minima è quasi certamente vuoto.
+$sizeMB = (Get-Item $out).Length / 1MB
+if ($sizeMB -lt 5) {
+    throw ("MSI sospetto: solo {0:N1} MB. L'harvest dei file dell'app è probabilmente fallito (vedi warning WIX8601 sopra): l'MSI non contiene l'applicazione. Controlla che esista dist\CorianoSign\ e i percorsi in packaging\corianosign.wxs." -f $sizeMB)
+}
+Write-Host ("==> Fatto: $out ({0:N1} MB)" -f $sizeMB)
 Write-Host ""
 Write-Host "Installazione manuale (per l'utente corrente, senza admin):"
 Write-Host "    msiexec /i `"$out`" /qb"
