@@ -108,6 +108,12 @@ powershell -ExecutionPolicy Bypass -File packaging\make_msi_windows.ps1
 Risultato: `dist\CorianoSign-<ver>-peruser.msi`. L'`UpgradeCode` è fisso, quindi
 una nuova versione **sostituisce** automaticamente la precedente (major upgrade).
 
+L'MSI crea, per l'utente corrente:
+- il collegamento nel **menu Start**;
+- il collegamento sul **desktop** (creato sempre);
+- l'associazione dei file **`.p7m`** (ProgId in `HKCU`; la predefinita effettiva
+  resta comunque la scelta dell'utente su Win10/11).
+
 ### Distribuire via GPO
 Nella *Group Policy Management Console*, in **Configurazione utente ▸ Criteri ▸
 Impostazioni software ▸ Installazione software**, aggiungi l'MSI da una **share di
