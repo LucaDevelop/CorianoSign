@@ -13,8 +13,13 @@
   Deploy via GPO: assegnare/pubblicare questo MSI agli UTENTI
   (Configurazione utente ▸ Criteri ▸ Impostazioni software), NON ai computer.
 
-  Compilazione: packaging\make_msi_windows.ps1 (richiede il tool 'wix').
+  Compilazione: packaging\make_msi_windows.ps1 (richiede il tool 'wix' v5).
   La versione arriva dal preprocessore: wix build -d Version=1.3.3 ...
+
+  NB percorsi: WiX risolve i SourceFile/Include relativi alla cartella da cui si
+  lancia 'wix build' (la ROOT del repo, dove opera make_msi_windows.ps1), NON
+  relativi a questo file. Per questo qui i path partono dalla root
+  (packaging\..., dist\...).
 
   NOTA: l'UpgradeCode NON va mai cambiato tra le versioni (serve a WiX per
   riconoscere e sostituire la versione precedente durante l'upgrade).
@@ -36,7 +41,7 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <Icon Id="AppIcon" SourceFile="CorianoSign.ico" />
+    <Icon Id="AppIcon" SourceFile="packaging\CorianoSign.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <!-- Link "supporto" nel Pannello di controllo ▸ App (facoltativo). -->
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/LucaDevelop/CorianoSign" />
@@ -71,7 +76,7 @@
   -->
   <Fragment>
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
-      <Files Include="..\dist\CorianoSign\**" />
+      <Files Include="dist\CorianoSign\**" />
     </ComponentGroup>
   </Fragment>
 
