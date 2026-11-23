@@ -277,8 +277,13 @@ class SignWorker(QThread):
                 signature_level=p["level"] or None,
                 signing_time=p.get("signing_time"),
             )
-            if p["cades"]:
+            if p["fmt"] == "cades":
                 out = aruba.sign_p7m(p["data"], **common)
+                self.done.emit(out)
+                return
+
+            if p["fmt"] == "xades":
+                out = aruba.sign_xades(p["data"], **common)
                 self.done.emit(out)
                 return
 
@@ -316,8 +321,11 @@ class SignWorker(QThread):
             token_label=p["token_label"] or None,
             cert_label=p["cert_label"] or None,
         )
-        if p["cades"]:
+        if p["fmt"] == "cades":
             self.done.emit(k.sign_p7m(p["data"], **common))
+            return
+        if p["fmt"] == "xades":
+            self.done.emit(k.sign_xades(p["data"], **common))
             return
         text = None
         if p["want_visible"]:
@@ -467,6 +475,10 @@ class SignatureCard(QFrame):
             "PAdES-LT": "PDF, validazione a lungo termine",
             "PAdES-LTA": "PDF, archiviazione a lungo termine",
             "PAdES document-timestamp": "marca temporale sul documento",
+            "XAdES-BES": "firma XML base",
+            "XAdES-T": "XML con marca temporale",
+            "XAdES-LT": "XML, validazione a lungo termine",
+            "XAdES-LTA": "XML, archiviazione a lungo termine",
         }.get(sig.level, "")
         llabel = QLabel(f"Livello: {sig.level}" + (f" — {lvl_desc}" if lvl_desc else ""))
         llabel.setStyleSheet(f"color:{_MUTED}; padding:0 0 6px 0; font-weight:600;")
@@ -1311,7 +1323,7 @@ class MainWindow(QMainWindow):
         root.addLayout(top)
 
         # intestazione file + esito globale
-        self.header = QLabel("Trascina qui un file .p7m o un PDF firmato, "
+        self.header = QLabel("Trascina qui un file .p7m, un PDF o un XML firmato, "
                              "oppure premi «Apri file».")
         self.header.setStyleSheet(
             "background:#f6f8fa; border:1px dashed #d0d7de; border-radius:8px;"
@@ -1396,8 +1408,8 @@ class MainWindow(QMainWindow):
     def open_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Apri file firmato", "",
-            "File firmati (*.p7m *.pdf);;CAdES (*.p7m);;PDF firmati (*.pdf);;"
-            "Tutti i file (*)",
+            "File firmati (*.p7m *.pdf *.xml);;CAdES (*.p7m);;PDF firmati (*.pdf);;"
+            "XAdES (*.xml);;Tutti i file (*)",
         )
         if path:
             self.analyze(path)
@@ -1483,10 +1495,10 @@ class MainWindow(QMainWindow):
 
         # per un PDF firmato PAdES il "documento" è il PDF stesso: estrarlo è
         # inutile (ma resta utile aprirlo). Per un .p7m — anche se racchiude un
-        # PDF — l'estrazione ha senso. Si distingue dal livello di firma PAdES,
-        # non dal contenuto (un p7m può contenere un PDF).
+        # Per PAdES e XAdES il file firmato È il documento (PDF/XML), quindi non
+        # c'è un contenuto "incapsulato" da estrarre come nei .p7m CAdES.
         self._is_pades_result = any(
-            s.level.startswith("PAdES") for s in res.signatures
+            s.level.startswith(("PAdES", "XAdES")) for s in res.signatures
         )
         self.btn_extract.setEnabled(bool(res.content) and not self._is_pades_result)
         self.btn_open_doc.setEnabled(bool(res.content))
@@ -1766,8 +1778,12 @@ class MainWindow(QMainWindow):
         self.rb_pades.setChecked(True)
         self.rb_pades.toggled.connect(self._sign_format_changed)
         self.rb_cades = QRadioButton("CAdES (.p7m)")
+        self.rb_cades.toggled.connect(self._sign_format_changed)
+        self.rb_xades = QRadioButton("XAdES (XML)")
+        self.rb_xades.toggled.connect(self._sign_format_changed)
         orow.addWidget(self.rb_pades)
         orow.addWidget(self.rb_cades)
+        orow.addWidget(self.rb_xades)
         orow.addSpacing(20)
         self.lbl_level = QLabel("Livello:")
         orow.addWidget(self.lbl_level)
@@ -1912,8 +1928,12 @@ class MainWindow(QMainWindow):
         return w
 
     def _sign_pick_file(self) -> None:
-        flt = ("PDF (*.pdf)" if self.rb_pades.isChecked()
-               else "Tutti i file (*)")
+        if self.rb_pades.isChecked():
+            flt = "PDF (*.pdf)"
+        elif self.rb_xades.isChecked():
+            flt = "XML (*.xml);;Tutti i file (*)"
+        else:
+            flt = "Tutti i file (*)"
         path, _ = QFileDialog.getOpenFileName(self, "Documento da firmare", "", flt)
         if not path:
             return
@@ -1932,8 +1952,8 @@ class MainWindow(QMainWindow):
                 self._apply_sign_appearance()
 
     def _sign_format_changed(self) -> None:
-        is_pdf = self.rb_pades.isChecked()
-        self.grp_visible.setVisible(is_pdf)
+        # la firma visibile (riquadro grafico) esiste solo per PAdES
+        self.grp_visible.setVisible(self.rb_pades.isChecked())
 
     def do_sign(self) -> None:
         if not self._sign_src:
@@ -1956,8 +1976,13 @@ class MainWindow(QMainWindow):
                                     "Il profilo selezionato non ha utente e dominio.")
                 return
 
-        cades = self.rb_cades.isChecked()
-        want_visible = (not cades) and self.grp_visible.isChecked()
+        if self.rb_cades.isChecked():
+            fmt = "cades"
+        elif self.rb_xades.isChecked():
+            fmt = "xades"
+        else:
+            fmt = "pades"
+        want_visible = (fmt == "pades") and self.grp_visible.isChecked()
 
         # credenziali: PIN per il dispositivo, password+OTP per Aruba (mai salvati)
         if is_token:
@@ -1998,7 +2023,7 @@ class MainWindow(QMainWindow):
         params = dict(
             kind="pkcs11" if is_token else "aruba",
             data=Path(self._sign_src).read_bytes(),
-            cades=cades,
+            fmt=fmt,
             want_visible=want_visible,
             page=self.sign_page.value(),
             rect=(lx, ly, rx, ry),
@@ -2033,7 +2058,7 @@ class MainWindow(QMainWindow):
             else "Firma in corso… (invio ad Aruba)")
         QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         self._sign_worker = SignWorker(params)
-        self._sign_worker.done.connect(lambda b, c=cades: self._on_signed(b, c))
+        self._sign_worker.done.connect(lambda b, f=fmt: self._on_signed(b, f))
         self._sign_worker.failed.connect(self._on_sign_failed)
         self._sign_worker.start()
 
@@ -2044,12 +2069,17 @@ class MainWindow(QMainWindow):
         self.sign_result.setText("Firma non riuscita.")
         QMessageBox.critical(self, "Firma non riuscita", msg)
 
-    def _on_signed(self, signed: bytes, cades: bool) -> None:
+    def _on_signed(self, signed: bytes, fmt: str) -> None:
         QGuiApplication.restoreOverrideCursor()
         self.btn_sign.setEnabled(True)
         src = Path(self._sign_src)
-        default = (src.with_suffix(src.suffix + ".p7m").name if cades
-                   else src.with_name(src.stem + "-firmato.pdf").name)
+        if fmt == "cades":
+            default = src.with_suffix(src.suffix + ".p7m").name
+        elif fmt == "xades":
+            # XAdES enveloped: resta un .xml (firma dentro il documento)
+            default = src.with_name(src.stem + "-firmato.xml").name
+        else:
+            default = src.with_name(src.stem + "-firmato.pdf").name
         out, _ = QFileDialog.getSaveFileName(self, "Salva documento firmato", default)
         if not out:
             self.sign_result.setText("Firma completata (non salvata).")
@@ -2062,8 +2092,8 @@ class MainWindow(QMainWindow):
         self.sign_result.setStyleSheet(f"color:{_OK};")
         self.sign_result.setText(f"✓ Firmato: {Path(out).name} ({len(signed):,} byte)".replace(",", "."))
 
-        if cades:
-            # ri-verifica col nostro motore
+        if fmt in ("cades", "xades"):
+            # ri-verifica col nostro motore (CAdES e XAdES sono verificabili qui)
             res = verifier.analyze_file(
                 out, self._store.certificates,
                 verifier.VerifyOptions(check_trust=bool(len(self._store)), allow_fetching=False),
@@ -2151,9 +2181,9 @@ class CorianoApp(QApplication):
 
 
 def _file_from_argv(argv) -> str | None:
-    """Primo argomento che sia un file .p7m/.pdf esistente (Windows/Linux)."""
+    """Primo argomento che sia un file .p7m/.pdf/.xml esistente (Windows/Linux)."""
     for arg in argv[1:]:
-        if arg.lower().endswith((".p7m", ".pdf")) and os.path.isfile(arg):
+        if arg.lower().endswith((".p7m", ".pdf", ".xml")) and os.path.isfile(arg):
             return arg
     return None
 

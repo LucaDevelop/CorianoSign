@@ -196,6 +196,122 @@ def sign_pdf(data: bytes, *, module_path: str, pin: str,
         _close(session)
 
 
+class _Pkcs11RSAKey:
+    """Fa da chiave privata RSA per signxml, firmando pero' sul token PKCS#11.
+
+    signxml (``XMLSigner``) accetta qualsiasi oggetto come ``key`` e per RSA ne
+    chiama ``key.sign(data, padding, algorithm)``; serve anche ``public_key()``
+    per serializzare il ``KeyValue`` (informazione pubblica, presa dal
+    certificato). La chiave privata NON lascia mai il dispositivo: la firma
+    avviene dentro il token col meccanismo ``SHA256_RSA_PKCS``.
+    """
+
+    def __init__(self, priv, public_key, key_size: int) -> None:
+        self._priv = priv
+        self._public_key = public_key
+        self.key_size = key_size
+
+    def public_key(self):
+        return self._public_key
+
+    def sign(self, data, padding=None, algorithm=None):  # firma RSA PKCS#1 v1.5
+        from pkcs11 import Mechanism
+        return self._priv.sign(data, mechanism=Mechanism.SHA256_RSA_PKCS)
+
+
+def _pkcs11_rsa_signing_key(module_path: str, pin: str,
+                            token_label: Optional[str],
+                            cert_label: Optional[str],
+                            key_label: Optional[str]):
+    """Apre il token e prepara (session, shim signxml, cert DER) per XAdES.
+
+    Il chiamante deve chiudere la ``session`` a firma conclusa.
+    """
+    try:
+        import pkcs11 as p11  # python-pkcs11
+    except ImportError as exc:  # pragma: no cover
+        raise Pkcs11Error("python-pkcs11 non installato.") from exc
+    from cryptography.x509 import load_der_x509_certificate
+    from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
+
+    label = _resolve_token_label(module_path, token_label)
+    lib = p11.lib(module_path)
+    tokens = list(lib.get_tokens(token_label=label)) if label \
+        else list(lib.get_tokens())
+    if not tokens:
+        raise Pkcs11Error("Nessun token trovato per la firma XAdES.")
+    session = tokens[0].open(user_pin=pin)
+    try:
+        # certificato (per KeyInfo e per la chiave pubblica)
+        cert_query = {p11.Attribute.CLASS: p11.ObjectClass.CERTIFICATE}
+        if cert_label:
+            cert_query[p11.Attribute.LABEL] = cert_label
+        cert_objs = list(session.get_objects(cert_query))
+        if not cert_objs:
+            raise Pkcs11Error("Nessun certificato sul token per la firma XAdES.")
+        der = bytes(cert_objs[0][p11.Attribute.VALUE])
+        cc = load_der_x509_certificate(der)
+        pub = cc.public_key()
+        if not isinstance(pub, _rsa.RSAPublicKey):
+            raise Pkcs11Error(
+                "Firma XAdES da dispositivo supportata solo per chiavi RSA "
+                "(il certificato sul token non e' RSA)."
+            )
+        # chiave privata corrispondente
+        key_query = {p11.Attribute.CLASS: p11.ObjectClass.PRIVATE_KEY}
+        lbl = key_label or cert_label
+        if lbl:
+            key_query[p11.Attribute.LABEL] = lbl
+        priv_objs = list(session.get_objects(key_query))
+        if not priv_objs:
+            raise Pkcs11Error("Chiave privata non trovata sul token.")
+        shim = _Pkcs11RSAKey(priv_objs[0], pub, pub.key_size)
+        return session, shim, der
+    except Exception:
+        _close(session)
+        raise
+
+
+def sign_xades(data: bytes, *, module_path: str, pin: str,
+               token_label: Optional[str] = None, cert_label: Optional[str] = None,
+               key_label: Optional[str] = None) -> bytes:
+    """Firma un documento XML in XAdES-BES *enveloped* usando il token PKCS#11.
+
+    ``data`` deve essere un XML: la firma viene inserita dentro il documento
+    (enveloped), il caso piu' comune in Italia per gli XML firmati.
+    """
+    try:
+        from signxml.xades import XAdESSigner
+    except ImportError as exc:  # pragma: no cover
+        raise Pkcs11Error(
+            "Libreria signxml non disponibile per la firma XAdES.") from exc
+    from lxml import etree
+
+    try:
+        parser = etree.XMLParser(resolve_entities=False, no_network=True,
+                                 load_dtd=False)
+        root = etree.fromstring(data, parser=parser)
+    except Exception as exc:  # noqa: BLE001
+        raise Pkcs11Error(
+            "La firma XAdES *enveloped* richiede un documento XML valido: "
+            f"il file non e' XML interpretabile ({exc})."
+        ) from exc
+
+    session, shim, der = _pkcs11_rsa_signing_key(
+        module_path, pin, token_label, cert_label, key_label)
+    try:
+        import base64
+        pem = ("-----BEGIN CERTIFICATE-----\n"
+               + base64.encodebytes(der).decode()
+               + "-----END CERTIFICATE-----\n")
+        signed = XAdESSigner(
+            signature_algorithm="rsa-sha256", digest_algorithm="sha256",
+        ).sign(root, key=shim, cert=pem)
+        return etree.tostring(signed, xml_declaration=True, encoding="UTF-8")
+    finally:
+        _close(session)
+
+
 def _stamp_style(signers, text: Optional[str], image_png: Optional[bytes]):
     """Aspetto del riquadro: testo (multi-riga) ed eventuale immagine di sfondo."""
     from pyhanko import stamp

@@ -71,6 +71,14 @@ class VisibleSignature:
     resize_mode: int = 0                # resizeMode
 
 
+# tipo di firma XML (enum Aruba xmlSignatureType)
+XML_ENVELOPED = "XMLENVELOPED"
+XML_ENVELOPING = "XMLENVELOPING"
+XML_DETACHED = "XMLDETACHED_INTERNAL"
+# canonicalizzazione: C14N 1.1 senza commenti (coerente con la verifica signxml)
+DEFAULT_XML_C14N = "ALGO_ID_C14N11_OMIT_COMMENTS"
+
+
 def _client(wsdl_url: str):
     try:
         from zeep import Client
@@ -320,4 +328,49 @@ def sign_p7m(
         dbg = _dump_diagnostics(client)
         hint = f" [diagnostica salvata in {dbg}]" if dbg else ""
         raise ArubaError(f"Chiamata pkcs7signV2 fallita: {exc}{hint}") from exc
+    return _check_return(resp)
+
+
+def sign_xades(
+    xml_bytes: bytes,
+    *,
+    user: str,
+    user_pwd: str,
+    otp: str,
+    wsdl_url: str = WSDL_PROD,
+    cert_id: str = DEFAULT_CERT_ID,
+    type_otp_auth: str,
+    type_hsm: str = DEFAULT_TYPE_HSM,
+    transport: str = DEFAULT_TRANSPORT,
+    signature_level: Optional[str] = None,
+    signing_time: Optional[str] = None,
+    xml_type: str = XML_ENVELOPED,
+    canonicalization: str = DEFAULT_XML_C14N,
+) -> bytes:
+    """Firma un documento XML in XAdES via l'operazione ``xmlsignature``.
+
+    ``xml_type`` = ``XMLENVELOPED`` (default), ``XMLENVELOPING`` o
+    ``XMLDETACHED_INTERNAL``. Il livello (BES/T/LT/LTA) segue ``signature_level``
+    come per PAdES/CAdES.
+    """
+    client = _client(wsdl_url)
+    identity = _identity(client, user, user_pwd, otp, type_otp_auth, type_hsm)
+    req_t = client.get_type("ns0:signRequestV2")
+    req = req_t(
+        certID=cert_id,
+        requiredmark=False,
+        transport=transport,
+        binaryinput=xml_bytes,
+        identity=identity,
+        signatureLevel=signature_level,
+        signingTime=_xml_safe(signing_time),
+    )
+    param_t = client.get_type("ns0:xmlSignatureParameter")
+    param = param_t(type=xml_type, canonicalizedType=canonicalization)
+    try:
+        resp = client.service.xmlsignature(SignRequestV2=req, parameter=param)
+    except Exception as exc:  # noqa: BLE001
+        dbg = _dump_diagnostics(client)
+        hint = f" [diagnostica salvata in {dbg}]" if dbg else ""
+        raise ArubaError(f"Chiamata xmlsignature fallita: {exc}{hint}") from exc
     return _check_return(resp)

@@ -11,7 +11,7 @@ from typing import Optional
 
 from asn1crypto import x509
 
-from . import cades_lt, cms, pades, revocation, timestamp
+from . import cades_lt, cms, pades, revocation, timestamp, xades
 from .model import P7MResult, SignatureResult, SignerInfo, TrustStatus
 from .validation import RevocationMode, validate_chain
 
@@ -48,6 +48,9 @@ def analyze_file(
     if pades.is_pdf(data):
         # firma PAdES: il "contenuto" e' il PDF stesso, col nome originale
         result.content_filename = os.path.basename(path) or "documento.pdf"
+    elif xades.is_xml(data):
+        # firma XAdES: il "contenuto" e' l'XML stesso, col nome originale
+        result.content_filename = os.path.basename(path) or "documento.xml"
     else:
         # eredita l'estensione originale dal nome file sorgente
         result.content_filename = _strip_p7m_suffix(path)
@@ -76,6 +79,10 @@ def analyze_bytes(
     # PDF firmato (PAdES): percorso dedicato
     if pades.is_pdf(data):
         return _analyze_pdf(data, trust_roots, tsa_roots, options, fetchers)
+
+    # XML firmato (XAdES): percorso dedicato
+    if xades.is_xml(data):
+        return _analyze_xml(data, trust_roots, tsa_roots, options, fetchers)
 
     try:
         signatures, content, levels = _analyze_layer(
@@ -139,6 +146,27 @@ def _analyze_pdf(
             out.append(sr)
 
     result.signatures = out
+    return result
+
+
+def _analyze_xml(
+    data: bytes,
+    trust_roots: list[x509.Certificate],
+    tsa_roots: list[x509.Certificate],
+    options: VerifyOptions,
+    fetchers=None,
+) -> P7MResult:
+    """Analizza un XML firmato XAdES riusando la validazione trust/revoca."""
+    result = P7MResult()
+    result.content = data  # il documento firmato e' l'XML stesso
+    sigs = xades.analyze(data, trust_roots, tsa_roots, options, fetchers)
+    if not sigs:
+        result.parse_errors.append(
+            "Nessuna firma XAdES trovata nell'XML (il documento non risulta "
+            "firmato)."
+        )
+        return result
+    result.signatures = sigs
     return result
 
 
