@@ -34,6 +34,63 @@ XADES = "http://uri.etsi.org/01903/v1.3.2#"
 XADES141 = "http://uri.etsi.org/01903/v1.4.1#"
 _NS = {"ds": DS, "xades": XADES, "xades141": XADES141}
 
+# XPath Filter 2.0: idioma ETSI per l'enveloped XAdES (usato da Aruba e da molti
+# altri servizi italiani). Al posto dello standard "enveloped-signature" il
+# documento referenziato (URI="") elenca un filtro ``subtract`` che toglie il
+# sottoalbero ``ds:Signature`` prima della canonicalizzazione. signxml non lo
+# implementa, quindi lo gestiamo noi (vedi ``_make_verifier``).
+FILTER2 = "http://www.w3.org/2002/06/xmldsig-filter2"
+
+
+def _make_verifier():
+    """Crea un ``XAdESVerifier`` che capisce anche XPath Filter 2.0 ``subtract``.
+
+    signxml gestisce solo i transform ``enveloped-signature``, ``base64`` e i
+    c14n: un transform ``xmldsig-filter2`` viene ignorato in silenzio, cosi' la
+    ``ds:Signature`` NON viene sottratta e l'impronta del documento non torna
+    ("Digest mismatch for reference 0"). Qui applichiamo il filtro ``subtract``
+    (rimozione dei sottoalberi selezionati dall'XPath) prima di delegare a
+    signxml, rendendo verificabili le firme XAdES enveloped stile Aruba/ETSI.
+    """
+    from lxml import etree
+    from signxml.xades import XAdESVerifier
+    from signxml.util import _remove_sig
+
+    class _XAdESVerifier(XAdESVerifier):
+        def _apply_transforms(self, payload, *, transforms_node, signature):
+            if transforms_node is not None and hasattr(payload, "xpath"):
+                for transform in self._findall(transforms_node, "Transform"):
+                    if transform.get("Algorithm") != FILTER2:
+                        continue
+                    for xp in transform.findall(f"{{{FILTER2}}}XPath"):
+                        filt = (xp.get("Filter") or "").strip().lower()
+                        expr = (xp.text or "").strip()
+                        if filt != "subtract":
+                            # union/intersect o filtri parziali: non sono
+                            # l'idioma enveloped e non sappiamo mapparli a una
+                            # semplice rimozione di sottoalberi. Meglio fallire
+                            # con un messaggio chiaro che dare un esito errato.
+                            raise ValueError(
+                                "Transform XPath Filter 2.0 non supportato "
+                                f"(Filter='{filt or '?'}'): solo 'subtract'."
+                            )
+                        ns = {k: v for k, v in (xp.nsmap or {}).items() if k}
+                        ns.setdefault("ds", DS)
+                        try:
+                            nodes = payload.xpath(expr, namespaces=ns)
+                        except etree.XPathError as exc:
+                            raise ValueError(
+                                f"XPath Filter 2.0 non valutabile: {exc}"
+                            ) from exc
+                        for node in nodes:
+                            if (isinstance(node, etree._Element)
+                                    and node.getparent() is not None):
+                                _remove_sig(node)
+            return super()._apply_transforms(
+                payload, transforms_node=transforms_node, signature=signature)
+
+    return _XAdESVerifier()
+
 
 def is_xml(data: bytes) -> bool:
     """Riconosce un documento XML (eventuale BOM/whitespace iniziale tollerato).
@@ -160,13 +217,12 @@ def _verify_crypto(data: bytes, signer_cert: x509.Certificate,
     fiducia la stabiliamo noi verso le Trusted List. Ritorna (valida, errore).
     """
     try:
-        from signxml.xades import XAdESVerifier
         from signxml import InvalidSignature, InvalidDigest, InvalidCertificate
     except ImportError as exc:  # pragma: no cover
         return False, f"Libreria signxml non disponibile: {exc}"
 
     try:
-        XAdESVerifier().verify(data, x509_cert=_pem(signer_cert).decode())
+        _make_verifier().verify(data, x509_cert=_pem(signer_cert).decode())
         return True, None
     except (InvalidSignature, InvalidDigest, InvalidCertificate) as exc:
         if multi:
