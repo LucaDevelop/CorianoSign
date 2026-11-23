@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "corianosign"
 version = "1.4.0"
-description = "App cross-platform per verificare firme digitali (.p7m / CAdES) ed estrarne il contenuto"
+description = "App cross-platform per verificare e apporre firme digitali italiane (CAdES/.p7m, PAdES/PDF, XAdES/XML)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

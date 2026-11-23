@@ -2,14 +2,26 @@
 
 # CorianoSign
 
-App **cross-platform** (macOS Apple Silicon / Windows) per aprire i file **`.p7m`**
-(buste CMS/PKCS#7, firma digitale **CAdES** italiana), **verificarne la validità
-della firma** ed **estrarre il documento** contenuto.
+App **cross-platform** (macOS Apple Silicon / Windows) per **verificare** e
+**apporre** firme digitali italiane nei tre formati standard — **CAdES** (`.p7m`),
+**PAdES** (PDF) e **XAdES** (XML) — ed **estrarre** il documento dalle buste `.p7m`.
 
 La verifica è a **validità legale**: oltre all'integrità crittografica, la
 catena del certificato del firmatario viene ricondotta a una **CA accreditata**
 presente nelle **Trusted List europee (EU LOTL) / italiana (AgID)**, con
 controllo di **revoca CRL/OCSP**.
+
+La firma si può apporre con **firma remota Aruba** (OTP) o con un **dispositivo
+locale** (smart card / token USB via PKCS#11, solo PIN — la chiave non lascia
+mai il dispositivo).
+
+### Formati supportati
+
+| Formato | File | Verifica | Firma |
+|--------|------|:---:|:---:|
+| **CAdES** | `.p7m` (CMS/PKCS#7) | ✅ | ✅ |
+| **PAdES** | PDF firmato (anche firma **visibile**) | ✅ | ✅ |
+| **XAdES** | XML firmato (enveloped) | ✅ | ✅ |
 
 ---
 
@@ -21,9 +33,10 @@ controllo di **revoca CRL/OCSP**.
 | **Certificato** | Titolare, organizzazione, codice fiscale/identificativo, emittente, numero di serie, validità temporale. |
 | **Catena / Trust** | Il certificato risale a una CA accreditata nella Trusted List (EU/AgID). |
 | **Autenticità lista** | La Trusted List è verificata nella firma XAdES e ancorata all'anchor OJ europeo (vedi sotto). |
-| **Marca temporale** | Le firme **CAdES-T** (RFC 3161) sono verificate: impronta, firma della TSA e TSA accreditata; il tempo attestato diventa l'istante di validazione. |
+| **Marca temporale** | Le firme **CAdES-T / PAdES-T** (RFC 3161) sono verificate: impronta, firma della TSA e TSA accreditata; il tempo attestato diventa l'istante di validazione. |
 | **Revoca** | Stato di revoca del certificato via CRL/OCSP (opzionale, online). |
 | **Firme multiple** | Firme parallele (più firmatari) e **annidate** (`file.pdf.p7m.p7m`). |
+| **Formato** | Riconosce e verifica CAdES (`.p7m`), PAdES (PDF) e XAdES (XML); il livello (BES/T/LT/LTA) è mostrato per ciascuna firma. |
 
 ---
 
@@ -57,38 +70,50 @@ l'app la scarica da sola; puoi comunque forzare l'aggiornamento con
 
 ## Uso — interfaccia grafica
 
-1. **Apri file .p7m** (o trascinalo nella finestra).
+1. **Apri un file firmato** — `.p7m`, un **PDF** o un **XML** — o trascinalo nella finestra.
 2. Leggi l'esito: verde = firma valida e riconducibile a CA accreditata.
-3. **Estrai documento** per salvare il file originale contenuto nella busta.
+3. **Estrai documento** per salvare il file originale contenuto nella busta `.p7m`
+   (per PAdES/XAdES il file firmato è già il documento).
 
 Le opzioni sono in **Impostazioni ▸ Verifica** (barra verticale a sinistra):
 *Valida catena*, *Controllo revoca online*, *Verifica autenticità delle liste*,
 aggiornamento automatico (*all'avvio* + *ogni N giorni*), *Ambito* (Italia/UE) e
 il pulsante **Aggiorna Trusted List ora**.
 
-## Firma (tab «Firma») — firma remota Aruba
+## Firma (tab «Firma»)
 
-Il secondo tab firma un documento con la **firma remota Aruba** (con OTP):
+Il secondo tab appone una firma digitale in uno dei tre formati — **PAdES** (PDF),
+**CAdES** (`.p7m`) o **XAdES** (XML) — con due modalità a scelta:
 
-1. In **Impostazioni** (barra verticale a sinistra: Generali / Verifica / Firma)
-   configuri una volta:
+- 🔑 **Dispositivo** (smart card / token USB, via PKCS#11): richiede solo il
+  **PIN**; la chiave privata non lascia mai il dispositivo;
+- ☁️ **Firma remota Aruba** (con **OTP**): la chiave è sull'HSM Aruba.
+
+### Come si firma
+1. In **Impostazioni** (barra verticale: Generali / Verifica / Firma) configuri una volta:
    - **Generali**: il **fuso orario** usato per la data/ora della firma;
-   - **Firma ▸ aspetto grafico**: il testo è sempre il **Nome Cognome** del
-     firmatario (dal certificato); motivazione e luogo sono **checkbox** che, se
-     attive, vengono **chieste al momento della firma**; più logo e «solo immagine»;
-   - **Firma ▸ utenti**: uno o più **utenti di firma remota** (Nome, Utente,
-     Dominio = *tipo OTP*, certID, HSM). Password e OTP **non** si salvano mai.
+   - **Firma ▸ aspetto grafico** (solo PAdES visibile): il testo è sempre il
+     **Nome Cognome** del firmatario (dal certificato); motivazione e luogo sono
+     **checkbox** che, se attive, vengono **chieste al momento della firma**;
+     più logo e «solo immagine»;
+   - **Firma ▸ utenti**: uno o più **utenti di firma remota** Aruba (Nome, Utente,
+     Dominio = *tipo OTP*, certID, HSM). Password e OTP **non** si salvano mai;
+   - **Firma ▸ dispositivo**: libreria **PKCS#11** del token (o rilevamento automatico).
+2. Nel tab **Firma**: **scegli documento**, **formato** (PAdES/CAdES/XAdES) e,
+   per Aruba, il **livello** (Predefinito/B/T/LT/LTA).
+3. Per **PAdES visibile**: trascina il riquadro sull'anteprima del PDF per
+   posizionarlo (testo e logo dai settaggi).
+4. Scegli in «Firma come:» un **utente Aruba** o **🔑 Dispositivo**, poi premi
+   **Firma** → OTP (Aruba) o PIN (dispositivo). Il file firmato viene salvato e,
+   per **CAdES** e **XAdES**, **ri-verificato** automaticamente col motore di
+   CorianoSign. L'XAdES è prodotto in modalità *enveloped* e salvato come `.xml`.
 
-2. Nel tab **Firma**: **scegli documento**, **formato** (PAdES/CAdES) e
-   **livello** (Predefinito/B/T/LT/LTA).
-3. Per PAdES, **firma visibile**: trascina il riquadro direttamente sull'anteprima
-   del PDF per posizionarlo (testo e logo vengono dai settaggi).
-4. Scegli l'**utente** («Firma come:») e premi **Firma con Aruba (OTP)** →
-   password + OTP → il file firmato viene salvato e, per il CAdES,
-   **ri-verificato** automaticamente col motore di CorianoSign.
+Dettagli e parametri del contratto Aruba in [docs/firma-remota.md](docs/firma-remota.md).
+La firma remota è disponibile anche da riga di comando (`corianosign-cli firma-remota`).
 
-Dettagli e parametri del contratto in [docs/firma-remota.md](docs/firma-remota.md).
-La stessa firma è disponibile da riga di comando (`corianosign-cli firma-remota`).
+> **Nota XAdES/dispositivo:** la firma XAdES da dispositivo è supportata per
+> certificati **RSA**; richiede il middleware **PKCS#11** del token installato
+> sul PC (fornito dal produttore della smart card/chiavetta).
 
 ## Uso — riga di comando
 
@@ -171,6 +196,8 @@ automatico, va confermata una volta dall'utente.)
 ```
 src/corianosign/
 ├── cms.py           parsing CMS/PKCS#7 + verifica crittografica delle firme
+├── pades.py         estrazione/verifica firme PAdES nei PDF (riusa la pipeline CMS)
+├── xades.py         verifica firme XAdES negli XML (via signxml + Trusted List)
 ├── trust.py         download/parse Trusted List (EU LOTL / AgID) -> CA fidate
 ├── tsl_signature.py verifica firma XAdES delle liste + pinning agli anchor OJ
 ├── timestamp.py     verifica marche temporali CAdES-T (RFC 3161)
@@ -178,7 +205,9 @@ src/corianosign/
 ├── archive_ts.py    ricalcolo impronta archive-timestamp-v3 (ats-hash-index-v3)
 ├── validation.py    validazione catena PKIX + revoca (pyhanko-certvalidator)
 ├── verifier.py      orchestratore: firme multiple/annidate, estrazione contenuto
-├── config.py        impostazioni persistenti (auto-update, intervallo)
+├── aruba.py         firma remota Aruba (PAdES/CAdES/XAdES) via SOAP
+├── pkcs11_sign.py   firma da dispositivo (smart card / token USB) via PKCS#11
+├── config.py        impostazioni persistenti (auto-update, intervallo, firma)
 ├── model.py         strutture dati dei risultati
 ├── gui.py           interfaccia PySide6
 ├── cli.py           interfaccia a riga di comando
@@ -275,6 +304,12 @@ probatorio**. In particolare:
    prodotti da altre implementazioni va confermata su campioni effettivi.
 2. Per le firme **CAdES-BES senza marca**, la validità temporale del certificato
    è valutata al `signing-time` auto-dichiarato (o all'ora corrente se assente).
+3. **XAdES:** la verifica crittografica (firma + integrità dei riferimenti) e la
+   validazione della catena verso le Trusted List sono complete; una eventuale
+   **marca XAdES-T** viene **rilevata** (livello indicato) ma non ancora verificata
+   crittograficamente. I documenti XML con **più firme** mostrano identità ed esito
+   trust per ciascun firmatario (la verifica crittografica per-firma del multi-firma
+   non è ancora supportata). Il caso tipico italiano è a firma singola.
 
 Per l'uso quotidiano (integrità, CA accreditata su lista **autenticata**, marca
 temporale, validazione a lungo termine LT, estrazione documento) l'app è
